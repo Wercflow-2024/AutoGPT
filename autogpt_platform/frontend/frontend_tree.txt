@@ -1,0 +1,150 @@
+.
+├── Dockerfile
+├── README.md
+├── components.json
+├── frontend_tree.txt
+├── next-env.d.ts
+├── next.config.mjs
+├── package-lock.json
+├── package.json
+├── playwright.config.ts
+├── postcss.config.mjs
+├── public
+│   ├── AUTOgpt_Logo_dark.png
+│   ├── AUTOgpt_Logo_light.png
+│   ├── favicon.ico
+│   ├── gpt_dark_RGB.svg
+│   ├── integrations
+│   │   ├── d-id.png
+│   │   ├── discord.png
+│   │   ├── github.png
+│   │   ├── google.png
+│   │   ├── hubspot.png
+│   │   ├── linear.png
+│   │   ├── maps.png
+│   │   ├── medium.png
+│   │   ├── mem0.png
+│   │   ├── notion.png
+│   │   ├── nvidia.jpg
+│   │   ├── openweathermap.png
+│   │   ├── pinecone.png
+│   │   ├── reddit.png
+│   │   ├── slant3d.jpeg
+│   │   ├── smtp.png
+│   │   ├── todoist.png
+│   │   ├── unreal-speech.png
+│   │   └── x.png
+│   ├── mockServiceWorker.js
+│   └── placeholder.png
+├── sentry.client.config.ts
+├── sentry.edge.config.ts
+├── sentry.server.config.ts
+├── src
+│   ├── app
+│   │   ├── admin
+│   │   ├── auth
+│   │   ├── dictionaries
+│   │   ├── error.tsx
+│   │   ├── global-error.tsx
+│   │   ├── globals.css
+│   │   ├── health
+│   │   ├── layout.tsx
+│   │   ├── library
+│   │   ├── login
+│   │   ├── marketplace
+│   │   ├── monitoring
+│   │   ├── onboarding
+│   │   ├── page.tsx
+│   │   ├── profile
+│   │   ├── providers.tsx
+│   │   ├── reset_password
+│   │   ├── scrapy
+│   │   ├── signup
+│   │   └── unauthorized
+│   ├── components
+│   │   ├── ConnectionLine.tsx
+│   │   ├── CustomEdge.tsx
+│   │   ├── CustomNode.tsx
+│   │   ├── DataTable.tsx
+│   │   ├── Flow.tsx
+│   │   ├── InputModalComponent.tsx
+│   │   ├── NodeHandle.tsx
+│   │   ├── NodeOutputs.tsx
+│   │   ├── OttoChatWidget.tsx
+│   │   ├── OutputModalComponent.tsx
+│   │   ├── PrimaryActionButton.tsx
+│   │   ├── ProfileDropdown.tsx
+│   │   ├── RoleBasedAccess.tsx
+│   │   ├── RunnerUIWrapper.tsx
+│   │   ├── SchemaTooltip.tsx
+│   │   ├── Spinner.tsx
+│   │   ├── TallyPopup.tsx
+│   │   ├── admin
+│   │   ├── agent-import-form.tsx
+│   │   ├── agents
+│   │   ├── agptui
+│   │   ├── auth
+│   │   ├── cronScheduler.tsx
+│   │   ├── customedge.css
+│   │   ├── customnode.css
+│   │   ├── edit
+│   │   ├── feature-flag
+│   │   ├── flow.css
+│   │   ├── history.ts
+│   │   ├── integrations
+│   │   ├── library
+│   │   ├── marketplace
+│   │   ├── monitor
+│   │   ├── node-input-components.tsx
+│   │   ├── onboarding
+│   │   ├── profile
+│   │   ├── runner-ui
+│   │   ├── tutorial.ts
+│   │   └── ui
+│   ├── hooks
+│   │   ├── useAgentGraph.tsx
+│   │   ├── useBezierPath.ts
+│   │   ├── useCopyPaste.ts
+│   │   ├── useCredentials.ts
+│   │   ├── useCredits.ts
+│   │   ├── useScrollThreshold.ts
+│   │   └── useSupabase.ts
+│   ├── instrumentation.ts
+│   ├── lib
+│   │   ├── autogpt-server-api
+│   │   ├── monitor
+│   │   ├── supabase
+│   │   ├── utils.ts
+│   │   └── withRoleAccess.ts
+│   ├── middleware.ts
+│   ├── stories
+│   │   ├── Button.stories.ts
+│   │   ├── Button.tsx
+│   │   ├── Configure.mdx
+│   │   ├── Header.stories.ts
+│   │   ├── Header.tsx
+│   │   ├── Page.stories.ts
+│   │   ├── Page.tsx
+│   │   ├── assets
+│   │   ├── button.css
+│   │   ├── header.css
+│   │   └── page.css
+│   ├── tests
+│   │   ├── auth.spec.ts
+│   │   ├── build.spec.ts
+│   │   ├── fixtures
+│   │   ├── monitor.spec.ts
+│   │   ├── pages
+│   │   ├── profile.spec.ts
+│   │   ├── title.spec.ts
+│   │   ├── util.spec.ts
+│   │   └── utils
+│   └── types
+│       └── auth.ts
+├── tailwind.config.ts
+├── test-runner-jest.config.js
+├── tsconfig.json
+├── webpack.config.js
+└── yarn.lock
+
+46 directories, 102 files

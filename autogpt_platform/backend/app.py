@@ -7,6 +7,14 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+
+from fastapi import FastAPI
+app = FastAPI()
+
+@app.get("/simple-test")
+def simple_test():
+    return {"message": "This works"}
+
 def run_processes(*processes: "AppProcess", **kwargs):
     """
     Execute all processes in the app. The last process is run in the foreground.

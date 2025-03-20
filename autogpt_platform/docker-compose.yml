@@ -1,155 +1,76 @@
-networks:
-  app-network:
-    name: app-network
-  shared-network:
-    name: shared-network
-
-volumes:
-  db-config:
-
-x-agpt-services:
-  &agpt-services
-  networks:
-    - app-network
-    - shared-network
-
-x-supabase-services:
-  &supabase-services
-  networks:
-    - app-network
-    - shared-network
+version: "3.9"
 
 services:
-  # AGPT services
-  migrate:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: migrate
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: redis
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   rabbitmq:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: rabbitmq
-
-  rest_server:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: rest_server
-
-  executor:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: executor
-
-  websocket_server:
-    <<: *agpt-services
-    extends:
-      file: ./docker-compose.platform.yml
-      service: websocket_server
-
-#  frontend:
-#    <<: *agpt-services
-#    extends:
-#      file: ./docker-compose.platform.yml
-#      service: frontend
-
-  # Supabase services
-  studio:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: studio
-
-  kong:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: kong
-
-  auth:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: auth
+    image: rabbitmq:3-management
+    restart: always
+    ports:
+      - "5672:5672"
+      - "15672:15672"
     environment:
-      GOTRUE_MAILER_AUTOCONFIRM: true
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  rest:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: rest
-
-  realtime:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: realtime
-
-  storage:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: storage
-
-  imgproxy:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: imgproxy
-
-  meta:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: meta
-
-  functions:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: functions
-
-  analytics:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: analytics
-
-  db:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: db
-  vector:
-    <<: *supabase-services
-    extends:
-      file: ./supabase/docker/docker-compose.yml
-      service: vector
-
-  deps:
-    <<: *supabase-services
-    profiles:
-      - local
-    image: busybox
-    command: /bin/true
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: server
+    command: ["sh", "-c", "poetry run prisma migrate deploy"]
     depends_on:
-      - studio
-      - kong
-      - auth
-      - meta
-      - analytics
-      - db
-      - vector
-      - redis
-      - rabbitmq
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: server
+    command: ["sh", "-c", "cd /app/autogpt_platform/backend && echo 'import sys; sys.path.append(\"/app/autogpt_platform\"); from app import run_processes; from executor import DatabaseManager, ExecutionScheduler; from notifications.notifications import NotificationManager; from server.rest_api import AgentServer; run_processes(NotificationManager(), DatabaseManager(), ExecutionScheduler(), AgentServer())' > temp_run.py && poetry run python temp_run.py"]
+    ports:
+      - "8006:8006"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      - .env

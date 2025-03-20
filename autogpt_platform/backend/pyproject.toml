@@ -4,8 +4,17 @@ version = "0.4.9"
 description = "A platform for building AI-powered agentic workflows"
 authors = ["AutoGPT <info@agpt.co>"]
 readme = "README.md"
-packages = [{ include = "backend", format = "sdist" }]
-
+packages = [
+  { include = "server" },
+  { include = "executor" },
+  { include = "data" },
+  { include = "blocks" },
+  { include = "integrations" },
+  { include = "notifications" },
+  { include = "test" },
+  { include = "usecases" },
+  { include = "util" }
+]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
@@ -13,7 +22,7 @@ aio-pika = "^9.5.4"
 anthropic = "^0.45.2"
 apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
-bleach = {extras = ["css"], version = "^6.2.0"}
+bleach = { extras = ["css"], version = "^6.2.0" }
 click = "^8.1.7"
 cryptography = "^43.0"
 discord-py = "^2.4.0"
@@ -43,7 +52,7 @@ praw = "~7.8.1"
 prisma = "^0.15.0"
 psutil = "^6.1.0"
 psycopg2-binary = "^2.9.10"
-pydantic = {extras = ["email"], version = "^2.10.6"}
+pydantic = { extras = ["email"], version = "^2.10.6" }
 pydantic-settings = "^2.3.4"
 pyro5 = "^5.15"
 pytest = "^8.2.1"
@@ -65,6 +74,8 @@ websockets = "^14.2"
 youtube-transcript-api = "^0.6.2"
 zerobouncesdk = "^1.1.1"
 # NOTE: please insert new dependencies in their alphabetical location
+beautifulsoup4 = "^4.13.3"
+requests = "^2.32.3"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.4.4"

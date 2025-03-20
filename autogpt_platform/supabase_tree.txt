@@ -1,0 +1,454 @@
+supabase
+├── CONTRIBUTING.md
+├── DEVELOPERS.md
+├── LICENSE
+├── Makefile
+├── README.md
+├── SECURITY.md -> apps/docs/public/.well-known/security.txt
+├── apps
+│   ├── design-system
+│   │   ├── README.md
+│   │   ├── __registry__
+│   │   ├── app
+│   │   ├── components
+│   │   ├── config
+│   │   ├── content
+│   │   ├── contentlayer.config.js
+│   │   ├── hooks
+│   │   ├── lib
+│   │   ├── next.config.mjs
+│   │   ├── package.json
+│   │   ├── postcss.config.cjs
+│   │   ├── public
+│   │   ├── registry
+│   │   ├── scripts
+│   │   ├── styles
+│   │   ├── tailwind.config.js
+│   │   ├── tsconfig.base.json
+│   │   ├── tsconfig.json
+│   │   ├── tsconfig.scripts.json
+│   │   └── types
+│   ├── docs
+│   │   ├── CONTRIBUTING.md
+│   │   ├── DEVELOPERS.md
+│   │   ├── README.md
+│   │   ├── app
+│   │   ├── components
+│   │   ├── content
+│   │   ├── data
+│   │   ├── docs
+│   │   ├── features
+│   │   ├── generator
+│   │   ├── hooks
+│   │   ├── internals
+│   │   ├── layouts
+│   │   ├── lib
+│   │   ├── middleware.ts
+│   │   ├── next-env.d.ts
+│   │   ├── next.config.mjs
+│   │   ├── package.json
+│   │   ├── postcss.config.js
+│   │   ├── public
+│   │   ├── scripts
+│   │   ├── spec
+│   │   ├── styles
+│   │   ├── tailwind.config.js
+│   │   ├── tsconfig.json
+│   │   ├── types
+│   │   └── vitest.config.ts
+│   ├── studio
+│   │   ├── Dockerfile
+│   │   ├── README.md
+│   │   ├── __mocks__
+│   │   ├── components
+│   │   ├── data
+│   │   ├── docker-entrypoint.sh
+│   │   ├── hooks
+│   │   ├── lib
+│   │   ├── localStores
+│   │   ├── next-env.d.ts
+│   │   ├── next.config.js
+│   │   ├── package.json
+│   │   ├── pages
+│   │   ├── postcss.config.js
+│   │   ├── public
+│   │   ├── sentry.client.config.ts
+│   │   ├── sentry.edge.config.ts
+│   │   ├── sentry.server.config.ts
+│   │   ├── state
+│   │   ├── stores
+│   │   ├── styles
+│   │   ├── tailwind.config.js
+│   │   ├── tests
+│   │   ├── tsconfig.json
+│   │   ├── types
+│   │   └── vitest.config.mts
+│   └── www
+│       ├── @types
+│       ├── README.md
+│       ├── _alternatives
+│       ├── _blog
+│       ├── _customers
+│       ├── _events
+│       ├── app
+│       ├── code-hike.d.ts
+│       ├── components
+│       ├── contentlayer.config.ts
+│       ├── data
+│       ├── hooks
+│       ├── internals
+│       ├── layouts
+│       ├── lib
+│       ├── next-env.d.ts
+│       ├── next.config.mjs
+│       ├── package.json
+│       ├── pages
+│       ├── postcss.config.js
+│       ├── public
+│       ├── schema.sql
+│       ├── styles
+│       ├── supabase
+│       ├── tailwind.config.js
+│       ├── tsconfig.json
+│       ├── types
+│       └── www.code-workspace
+├── babel.config.js
+├── docker
+│   ├── README.md
+│   ├── dev
+│   │   ├── data.sql
+│   │   └── docker-compose.dev.yml
+│   ├── docker-compose.s3.yml
+│   ├── docker-compose.yml
+│   └── volumes
+│       ├── api
+│       ├── db
+│       ├── functions
+│       ├── logs
+│       └── storage
+├── examples
+│   ├── ai
+│   │   ├── aws_bedrock_image_gen
+│   │   ├── aws_bedrock_image_search
+│   │   ├── edge-functions
+│   │   ├── face_similarity.ipynb
+│   │   ├── image_search
+│   │   ├── llamafile-edge
+│   │   ├── llamaindex
+│   │   ├── semantic_text_deduplication.ipynb
+│   │   └── vector_hello_world.ipynb
+│   ├── archive
+│   │   └── README.md
+│   ├── auth
+│   │   ├── flutter-mfa
+│   │   ├── flutter-native-google-auth
+│   │   └── nextjs
+│   ├── caching
+│   │   ├── with-cloudflare-workers-kv
+│   │   ├── with-nextjs-13
+│   │   ├── with-nextjs-13-server-components
+│   │   └── with-react-query-nextjs-14
+│   ├── edge-functions
+│   │   ├── README.md
+│   │   ├── app
+│   │   ├── edge-functions.code-workspace
+│   │   └── supabase
+│   ├── enterprise-patterns
+│   │   ├── partitions
+│   │   └── supachat
+│   ├── product-sample-supabase-kt
+│   │   ├── app
+│   │   ├── build.gradle
+│   │   ├── gradle
+│   │   ├── gradle.properties
+│   │   ├── gradlew
+│   │   ├── gradlew.bat
+│   │   ├── local.properties
+│   │   └── settings.gradle
+│   ├── realtime
+│   │   ├── flutter-figma-clone
+│   │   ├── flutter-multiplayer-shooting-game
+│   │   ├── nextjs-auth-presence
+│   │   └── nextjs-authorization-demo
+│   ├── slack-clone
+│   │   └── nextjs-slack-clone
+│   ├── storage
+│   │   ├── protomaps
+│   │   └── resumable-upload-uppy
+│   ├── todo-list
+│   │   ├── nextjs-todo-list
+│   │   ├── nuxt3-todo-list
+│   │   └── sveltejs-todo-list
+│   ├── user-management
+│   │   ├── angular-user-management
+│   │   ├── expo-push-notifications
+│   │   ├── expo-user-management
+│   │   ├── flutter-user-management
+│   │   ├── nextjs-user-management
+│   │   ├── nuxt3-user-management
+│   │   ├── react-user-management
+│   │   ├── refine-user-management
+│   │   ├── solid-user-management
+│   │   ├── svelte-user-management
+│   │   ├── sveltekit-user-management
+│   │   ├── swift-user-management
+│   │   └── vue3-user-management
+│   └── with-cloudflare-workers
+│       ├── README.md
+│       ├── package-lock.json
+│       ├── package.json
+│       ├── src
+│       └── wrangler.toml
+├── i18n
+│   ├── README.ar.md
+│   ├── README.bg.md
+│   ├── README.bn.md
+│   ├── README.ca.md
+│   ├── README.cs.md
+│   ├── README.da.md
+│   ├── README.de.md
+│   ├── README.el.md
+│   ├── README.es.md
+│   ├── README.et.md
+│   ├── README.fa.md
+│   ├── README.fi.md
+│   ├── README.fr.md
+│   ├── README.gr.md
+│   ├── README.gu.md
+│   ├── README.he.md
+│   ├── README.hi.md
+│   ├── README.hu.md
+│   ├── README.id.md
+│   ├── README.it.md
+│   ├── README.jp.md
+│   ├── README.ko.md
+│   ├── README.lt.md
+│   ├── README.lv.md
+│   ├── README.ms.md
+│   ├── README.nb-no.md
+│   ├── README.nb.md
+│   ├── README.ne.md
+│   ├── README.nl.md
+│   ├── README.pl.md
+│   ├── README.pt-PT.md
+│   ├── README.pt-br.md
+│   ├── README.pt.md
+│   ├── README.ro.md
+│   ├── README.ru.md
+│   ├── README.si.md
+│   ├── README.sk.md
+│   ├── README.sl.md
+│   ├── README.sq.md
+│   ├── README.sr.md
+│   ├── README.sv.md
+│   ├── README.ta.md
+│   ├── README.th.md
+│   ├── README.tr.md
+│   ├── README.uk.md
+│   ├── README.vi-vn.md
+│   ├── README.zh-cn.md
+│   ├── README.zh-tw.md
+│   └── languages.md
+├── package-lock.json
+├── package.json
+├── packages
+│   ├── ai-commands
+│   │   ├── README.md
+│   │   ├── babel.config.js
+│   │   ├── edge.ts
+│   │   ├── index.ts
+│   │   ├── jest.config.js
+│   │   ├── package.json
+│   │   ├── src
+│   │   ├── test
+│   │   └── tsconfig.json
+│   ├── api-types
+│   │   ├── index.ts
+│   │   ├── package.json
+│   │   └── types
+│   ├── build-icons
+│   │   ├── package.json
+│   │   └── src
+│   ├── common
+│   │   ├── MetaFavicons
+│   │   ├── Providers.tsx
+│   │   ├── assets
+│   │   ├── auth.tsx
+│   │   ├── constants
+│   │   ├── database-types.ts
+│   │   ├── fetchWrappers.tsx
+│   │   ├── gotrue.ts
+│   │   ├── helpers.ts
+│   │   ├── hooks
+│   │   ├── index.tsx
+│   │   ├── package.json
+│   │   ├── postcss.config.js
+│   │   ├── tailwind.config.js
+│   │   ├── telemetry.ts
+│   │   └── tsconfig.json
+│   ├── config
+│   │   ├── code-hike.scss
+│   │   ├── code-hike.theme.json
+│   │   ├── default-colors.js
+│   │   ├── package.json
+│   │   ├── postcss.config.js
+│   │   ├── tailwind.config.js
+│   │   └── ui.config.js
+│   ├── eslint-config-supabase
+│   │   ├── next.js
+│   │   └── package.json
+│   ├── icons
+│   │   ├── README.md
+│   │   ├── __registry__
+│   │   ├── package.json
+│   │   ├── scripts
+│   │   ├── src
+│   │   └── tsconfig.json
+│   ├── pg-meta
+│   │   ├── package.json
+│   │   ├── src
+│   │   └── tsconfig.json
+│   ├── shared-data
+│   │   ├── config.ts
+│   │   ├── extensions.json
+│   │   ├── index.ts
+│   │   ├── logConstants.ts
+│   │   ├── package.json
+│   │   ├── plans.ts
+│   │   ├── pricing.ts
+│   │   ├── products.ts
+│   │   ├── questions.ts
+│   │   ├── regions.ts
+│   │   ├── tsconfig.json
+│   │   └── tweets.ts
+│   ├── tsconfig
+│   │   ├── README.md
+│   │   ├── base.json
+│   │   ├── nextjs.json
+│   │   ├── package.json
+│   │   └── react-library.json
+│   ├── ui
+│   │   ├── README.md
+│   │   ├── README.tokens.md
+│   │   ├── components.json
+│   │   ├── index.tsx
+│   │   ├── internals
+│   │   ├── jest.config.ts
+│   │   ├── jest.setup.ts
+│   │   ├── package.json
+│   │   ├── postcss.config.js
+│   │   ├── src
+│   │   ├── tailwind-theming.md
+│   │   ├── tailwind.config.js
+│   │   ├── transformTokens.js
+│   │   └── tsconfig.json
+│   └── ui-patterns
+│       ├── AssistantChat
+│       ├── CommandMenu
+│       ├── ComplexTabs
+│       ├── ComputeBadge
+│       ├── ConsentToast
+│       ├── CountdownWidget
+│       ├── DataInputs
+│       ├── Dialogs
+│       ├── ExpandableVideo
+│       ├── GlassPanel
+│       ├── IconPanel
+│       ├── InnerSideMenu
+│       ├── MultiSelectDeprecated
+│       ├── PrivacySettings
+│       ├── PromoToast
+│       ├── README.md
+│       ├── SchemaTableNode.tsx
+│       ├── ShimmeringLoader
+│       ├── SqlToRest
+│       ├── ThemeToggle.tsx
+│       ├── TweetCard
+│       ├── admonition.tsx
+│       ├── form
+│       ├── index.tsx
+│       ├── info-tooltip.tsx
+│       ├── lib
+│       ├── multi-select
+│       ├── package.json
+│       ├── tailwind.config.js
+│       ├── tsconfig.json
+│       ├── types
+│       ├── vitest.config.ts
+│       └── vitest.setup.ts
+├── playwright-tests
+│   ├── README.md
+│   ├── package.json
+│   ├── playwright.config.ts
+│   ├── scripts
+│   │   └── generate-env.js
+│   ├── supabase
+│   │   ├── config.toml
+│   │   └── seed.sql
+│   └── tests
+│       └── snapshot
+├── scripts
+│   └── getSecrets.js
+├── supabase
+│   ├── config.toml
+│   ├── functions
+│   │   ├── ai-docs
+│   │   ├── common
+│   │   ├── health-check
+│   │   ├── hello-world
+│   │   ├── lw12-ticket-og
+│   │   ├── og-images
+│   │   ├── search-embeddings
+│   │   └── search-v2
+│   ├── migrations
+│   │   ├── 20230126220613_doc_embeddings.sql
+│   │   ├── 20230128004504_embedding_similarity_search.sql
+│   │   ├── 20230216195821_page_hierarchy.sql
+│   │   ├── 20230216232739_page_section_heading_slug.sql
+│   │   ├── 20230217032716_page_hierarchy_function.sql
+│   │   ├── 20230228205709_page_source.sql
+│   │   ├── 20230403222943_reusable_match_function.sql
+│   │   ├── 20230421193603_page_version.sql
+│   │   ├── 20231115053211_remote_schema.sql
+│   │   ├── 20231121164837_modify_search_functions.sql
+│   │   ├── 20231127222412_search_full_text_for_fts.sql
+│   │   ├── 20240123195252_add_rag_ignore_column.sql
+│   │   ├── 20240129101115_add_ipv6_active_status_rpc.sql
+│   │   ├── 20240208001120_add_feedback_table.sql
+│   │   ├── 20240306233728_create_feedback_view.sql
+│   │   ├── 20240403133820_track_feedback_query_params.sql
+│   │   ├── 20240604035404_last_changed.sql
+│   │   ├── 20240605171314_last_changed_update.sql
+│   │   ├── 20240626184716_misc_database_fixes.sql
+│   │   ├── 20240722100743_remote_schema.sql
+│   │   ├── 20240723131601_drop_unused_tables.sql
+│   │   ├── 20240723155310_add_lw12_ticketing_schema.sql
+│   │   ├── 20240911215059_troubleshooting_entries.sql
+│   │   └── 20240918220938_validation_history.sql
+│   ├── remotes
+│   │   ├── preview.tf
+│   │   ├── production.tf
+│   │   └── provider.tf
+│   └── seed.sql
+├── tests
+│   ├── README.md
+│   ├── data
+│   │   └── func.ts
+│   ├── features
+│   │   ├── javascript
+│   │   ├── python
+│   │   └── templates
+│   ├── jest.config.ts
+│   ├── package.json
+│   ├── supabase
+│   │   ├── config.toml
+│   │   └── migrations
+│   └── tsconfig.json
+├── tsconfig.json
+├── turbo.json
+└── vale
+    └── styles
+        ├── Custom
+        └── config
+
+209 directories, 243 files

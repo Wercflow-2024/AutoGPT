@@ -112,8 +112,26 @@ app.include_router(
     prefix="/api/email",
 )
 
+
+from backend.api import missions
+app.include_router(missions.router, tags=["scrapy"], prefix="/api")
+
+
 app.mount("/external-api", external_app)
 
+@app.post("/api/direct-scrapy-test")
+async def direct_scrapy_test(request: fastapi.Request):
+    payload = await request.json()
+    try:
+        from backend.scrapy.mission_runner import run_scrapy_mission
+        result = run_scrapy_mission(payload)
+        return result
+    except Exception as e:
+        return {"error": str(e), "type": str(type(e))}
+
+@app.post("/test")
+async def test_post():
+    return {"status": "working"}
 
 @app.get(path="/health", tags=["health"], dependencies=[])
 async def health():
