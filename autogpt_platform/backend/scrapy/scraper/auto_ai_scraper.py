@@ -1075,7 +1075,7 @@ class AutonomousScraper:
                     pass
             
             # Try to find any hidden JSON in attributes
-            data_attrs = soup.find_all(attrs=lambda x: x and any(a.startswith('data-') for a in x.attrs))
+            data_attrs = soup.find_all(attrs=lambda x: x and hasattr(x, 'attrs') and any(a.startswith('data-') for a in x.attrs))
             
             for elem in data_attrs:
                 for attr, value in elem.attrs.items():
@@ -1226,13 +1226,15 @@ class AutonomousScraper:
     def extract_with_ai_analysis(self, html: str, url: str) -> Dict:
         """Use AI to analyze the HTML and extract data"""
         logger.info("Attempting extraction with AI analysis")
-        openai.api_key = self.api_key
-        openai.api_base = self.endpoint  # Use your Azure endpoint
-        openai.api_type = "azure"
-        openai.api_version = "2024-08-01-preview"
-        
-        if not self.api_key:
-            logger.warning("No OpenAI API key, cannot use AI analysis")
+        openai = None  # Ensure openai is defined
+        try:
+            import openai
+            openai.api_key = self.api_key
+            openai.api_base = os.environ.get("AZURE_OPENAI_ENDPOINT")
+            openai.api_type = "azure"
+            openai.api_version = "2024-08-01-preview"
+        except ImportError:
+            logger.warning("OpenAI package not found, cannot use AI analysis")
             raise ValueError("No OpenAI API key provided")
         
         # Initialize result
