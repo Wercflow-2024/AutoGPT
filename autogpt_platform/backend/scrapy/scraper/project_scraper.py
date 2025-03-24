@@ -623,6 +623,30 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
         # Call OpenAI for assistance
         fix_suggestions = suggest_fixes_via_openai(html, url, missing_elements, snapshot_path)
         
+        # Retry with AI-suggested selectors
+        if fix_suggestions.get("suggestions"):
+            updated_strategy = {
+                "name": strategy.get("name", "ai_retry"),
+                "selectors": {**strategy.get("selectors", {}), **fix_suggestions["suggestions"]}
+            }
+            logger.info(f"🔁 Retrying scrape with AI-enhanced strategy: {updated_strategy['name']}")
+        
+            retry_data = extract_project_data(html, updated_strategy, url, fallback_mapping)
+            retry_missing = validate_scraped_data(retry_data)
+        
+            retry_data["meta"].update({
+                "strategy_used": updated_strategy["name"],
+                "ai_retry": True,
+                "missing_elements_after_retry": retry_missing,
+                "ai_suggestions": fix_suggestions.get("suggestions", {}),
+                "snapshot_analyzed": fix_suggestions.get("snapshot_analyzed"),
+            })
+        
+            if debug:
+                logger.info(json.dumps(retry_data, indent=2))
+        
+            return retry_data
+        
         # Add AI debug info to metadata
         data["meta"]["missing_elements"] = missing_elements
         data["meta"]["ai_suggestions"] = fix_suggestions.get("suggestions", {})
