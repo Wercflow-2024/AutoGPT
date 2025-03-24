@@ -24,25 +24,36 @@ logger = logging.getLogger("ai_enhancer")
 
 def extract_json_from_response(text: str) -> dict:
     """Extract valid JSON from an OpenAI response string"""
+    import re
+
+    def clean_json_string(json_str):
+        # Replace single quotes with double quotes
+        json_str = json_str.replace("'", '"')
+        # Remove trailing commas
+        json_str = re.sub(r",\s*([}\]])", r"\1", json_str)
+        return json_str
+
+    # Try full response as-is
     try:
-        return json.loads(text)
+        return json.loads(clean_json_string(text))
     except json.JSONDecodeError:
         pass
 
-    # Extract from backtick-enclosed code block
+    # Try extracting from triple-backtick block
     match = re.search(r"```(?:json)?\s*({.*?})\s*```", text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group(1))
+            return json.loads(clean_json_string(match.group(1)))
         except json.JSONDecodeError:
             pass
 
-    # Attempt to fix single quotes or trailing commas
-    try:
-        cleaned = text.replace("'", '"')
-        return json.loads(cleaned)
-    except Exception:
-        pass
+    # Try first {...} block
+    match = re.search(r"({.*})", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(clean_json_string(match.group(1)))
+        except json.JSONDecodeError:
+            pass
 
     raise ValueError("❌ Could not parse AI response as valid JSON")
 
@@ -208,6 +219,7 @@ class AzureOpenAIEnhancer:
             raise Exception(f"OpenAI API error: {response.status_code}")
         
         response_data = response.json()
+        logger.debug(f"Raw AI response: {response_data['choices'][0]['message']['content']}")
         return response_data["choices"][0]["message"]["content"]
     
     def _create_selector_prompt(self, html: str, missing_elements: List[str], site_url: str) -> List[Dict]:
