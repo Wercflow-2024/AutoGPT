@@ -38,7 +38,7 @@ except ImportError:
     from scrapy.utils.testing import save_html_snapshot, save_test_result
 
 # NEW: Import headless_fetcher for dynamic content fetching
-from headless_fetcher import fetch_dynamic_page
+from backend.scrapy.scraper.headless_fetcher import fetch_dynamic_page
 
 # Configure logging
 logging.basicConfig(
@@ -702,12 +702,15 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
     
     # Validate scraped data; if dynamic elements are missing, use headless browser fallback
     missing_elements = validate_scraped_data(data)
+    logger.debug(f"Missing elements detected: {missing_elements}")
     if missing_elements:
         logger.info(f"Dynamic content missing ({missing_elements}). Retrying with headless browser...")
+        logger.info("Invoking headless_fetcher with wait_selector '.credits-container' and timeout 15 seconds.")
         # Fetch fully rendered HTML using headless browser (waits for .credits-container to load)
         rendered_html = fetch_dynamic_page(url, wait_selector=".credits-container", timeout=15)
+        logger.debug(f"Rendered HTML fetched. Length: {len(rendered_html)} characters.")
         # Optionally, save a new snapshot of the rendered HTML here if desired
-        # Re-run extraction using the fresh, rendered HTML by forcing a refresh in adaptive extractor if possible
+        logger.info("Re-running adaptive extraction with rendered HTML complete.")
         data = scrape_project_adaptive(
             url=url,
             fallback_mapping=fallback_mapping,
