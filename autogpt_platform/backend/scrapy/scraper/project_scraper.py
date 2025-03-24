@@ -658,6 +658,19 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
         data["meta"]["credits_enriched"] = False
     else:
         data["meta"]["credits_enriched"] = True
+        # Save successful AI-enhanced strategy for future use
+        try:
+            if all_suggestions:
+                domain = urlparse(url).netloc.replace("www.", "").split(".")[0]
+                from backend.scrapy.utils.config import get_next_version
+                strategy_version = get_next_version(domain, CONFIG["STRATEGIES_DIR"], "v")
+                strategy_path = os.path.join(CONFIG["STRATEGIES_DIR"], domain, f"{strategy_version}.json")
+                os.makedirs(os.path.dirname(strategy_path), exist_ok=True)
+                with open(strategy_path, "w", encoding="utf-8") as f:
+                    json.dump(updated_strategy, f, indent=2)
+                logger.info(f"🧠 Saved new AI-enhanced strategy to: {strategy_path}")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to save AI strategy: {e}")
     
     # Normalize roles with AI if requested
     if normalize_roles and CONFIG["AI_ENABLED"]:

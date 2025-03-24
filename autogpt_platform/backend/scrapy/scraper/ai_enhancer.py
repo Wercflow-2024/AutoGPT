@@ -126,6 +126,16 @@ class AzureOpenAIEnhancer:
             # Parse response
             suggestions = self._parse_selector_response(response, missing_elements)
             logger.info(f"✅ AI suggestions generated for: {', '.join(missing_elements)}")
+            
+            # Check if new selectors differ from previous selectors
+            if previous_selectors is not None:
+                prev = previous_selectors if isinstance(previous_selectors, dict) else {}
+                new = suggestions.get("selectors", {})
+                if new != prev:
+                    logger.info("New selectors differ from previous selectors.")
+                else:
+                    logger.info("AI suggestions did not change from previous selectors.")
+                    
             return suggestions
             
         except Exception as e:
