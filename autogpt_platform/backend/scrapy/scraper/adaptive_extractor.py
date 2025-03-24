@@ -173,31 +173,48 @@ class AdaptiveExtractor:
         return self.data
     
     def _detect_structure(self) -> str:
-        """Enhanced structure detection with more nuanced checks"""
+        """Detect the structure type of the page"""
         try:
             # Debug output for structure detection
             if self.debug:
                 logger.debug(f"Domain: {self.domain}")
-                logger.debug(f"Has span.font-barlow: {bool(self.soup.select('span.font-barlow.font-bold.text-black'))}")
-                logger.debug(f"Has div.flex.space-y-4: {bool(self.soup.select('div.flex.space-y-4'))}")
-                logger.debug(f"Has .rich-text.space-y-5: {bool(self.soup.select('.rich-text.space-y-5'))}")
-                logger.debug(f"Has .credit-entry: {bool(self.soup.select('.credit-entry'))}")
-            
-            # Enhanced LBB Online detection
-            if "lbbonline.com" in self.domain:
-                # Check for potential structure indicators
-                structure_indicators = [
-                    # Original indicators
-                    bool(self.soup.select("span.font-barlow.font-bold.text-black")),
-                    bool(self.soup.select(".credit-entry")),
-                    
-                    # Additional indicators
-                    bool(self.soup.select("div[class*='project-details']")),
-                    bool(self.soup.select("section[class*='credits']")),
-                    bool(self.soup.select("[data-testid*='project-']"))
-                ]
+                logger.debug(f"Title: {self.soup.title.string if self.soup.title else 'No title'}")
                 
-                # Confidence scoring
+                # Log key structural elements presence
+                for selector in ['span.font-barlow', 'div.flex.space-y-4', '.rich-text.space-y-5', '.credit-entry']:
+                    logger.debug(f"Has {selector}: {bool(self.soup.select(selector))}")
+                
+                # Add additional logging for credits tab structure
+                for selector in ['.credits-tab', '.tab-selector', '.credits-container']:
+                    logger.debug(f"Has {selector}: {bool(self.soup.select(selector))}")
+            
+            # LBB Online 2025 design detection
+            if "lbbonline.com" in self.domain:
+                # Look for credit tab structures
+                has_credits_tab = bool(self.soup.select('.credits-tab, .tab-selector, [data-tab="credits"]'))
+                
+                if has_credits_tab:
+                    logger.info("Detected LBB Online with credits in tabs - needs JavaScript interaction")
+                    return "lbbonline_js_v2"
+                
+                # Check for LBB v2 first (new design)
+                if (self.soup.select("span.font-barlow.font-bold.text-black") or 
+                    self.soup.select("div.flex.space-y-4") or 
+                    self.soup.select(".rich-text.space-y-5")):
+                    return "lbbonline_v2"
+                
+                # Then check for LBB v1 (old design)
+                if (self.soup.select(".credit-entry") or 
+                    self.soup.select(".company-name") or 
+                    self.soup.select(".field--name-field-basic-info")):
+                    return "lbbonline_v1"
+                
+                # Define structure indicators for confidence scoring
+                structure_indicators = [
+                    bool(self.soup.select("span.font-barlow.font-bold.text-black")),
+                    bool(self.soup.select("div.flex.space-y-4")),
+                    bool(self.soup.select(".rich-text.space-y-5"))
+                ]
                 confidence_score = sum(structure_indicators)
                 
                 if confidence_score >= 2:

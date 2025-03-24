@@ -676,19 +676,6 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
                   strategy_name: Optional[str] = None) -> Dict:
     """
     Main function to scrape a project page.
-    
-    Args:
-        url: URL of the project page
-        fallback_mapping: Optional mapping for role/company normalization
-        debug: Enable debug output
-        ai_enabled: Override config setting for AI enhancement
-        ai_model: Override config setting for AI model
-        normalize_roles: Use AI to normalize unknown roles
-        strategy_file: Path to a JSON file containing a custom strategy
-        strategy_name: Name of a strategy to use (domain/version)
-    
-    Returns:
-        Dictionary with project data
     """
     # First attempt using the adaptive extractor
     data = scrape_project_adaptive(
@@ -703,24 +690,65 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
     
     # Validate scraped data; if dynamic elements are missing, use headless browser fallback
     missing_elements = validate_scraped_data(data)
-    logger.debug(f"Missing elements detected: {missing_elements}")
+    logger.info(f"Missing elements detected: {missing_elements}")
     if missing_elements:
         logger.info(f"Dynamic content missing ({missing_elements}). Retrying with headless browser...")
-        logger.info("Invoking headless_fetcher with wait_selector '.credits-container' and timeout 15 seconds.")
-        # Fetch fully rendered HTML using headless browser (waits for .credits-container to load)
-        rendered_html = fetch_dynamic_page(url, wait_selector=".credits-container", timeout=15)
-        logger.debug(f"Rendered HTML fetched. Length: {len(rendered_html)} characters.")
-        # Optionally, save a new snapshot of the rendered HTML here if desired
-        logger.info("Re-running adaptive extraction with rendered HTML complete.")
-        data = scrape_project_adaptive(
-            url=url,
-            fallback_mapping=fallback_mapping,
-            debug=debug,
-            ai_enabled=ai_enabled,
-            ai_model=ai_model,
-            normalize_roles=normalize_roles,
-            strategy_file=strategy_file
+        
+        # Determine if this is an LBB page and set appropriate click selectors
+        click_selectors = None
+        if "lbbonline.com" in url:
+            click_selectors = [
+                ".tab-selector", 
+                ".credits-tab",
+                "button:contains('Credits')",
+                "button:contains('View All')",
+                ".credits-selector"  # Add any other potential selectors
+            ]
+            logger.info(f"Using LBB-specific click selectors: {click_selectors}")
+        
+        # Fetch fully rendered HTML using enhanced headless browser
+        rendered_html = fetch_dynamic_page(
+            url, 
+            wait_selector=".credits-container", 
+            click_selectors=click_selectors,
+            timeout=15,
+            debug=debug
         )
+        
+        # Save a snapshot of the rendered HTML for debugging
+        if debug:
+            domain = urlparse(url).netloc.replace("www.", "")
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:10]
+            rendered_path = os.path.join(SNAPSHOT_DIR, f"{domain}__rendered_{url_hash}.html")
+            with open(rendered_path, "w", encoding="utf-8") as f:
+                f.write(rendered_html)
+            logger.info(f"Saved rendered HTML snapshot to: {rendered_path}")
+        
+        # Create a fake context that uses the rendered HTML instead of re-fetching
+        class FakeContext:
+            def fetch_html_and_snapshot(self, url, force_refresh=False):
+                return rendered_html, False
+        
+        # Patch the fetch function temporarily
+        original_fetch = fetch_html_and_snapshot
+        fetch_html_and_snapshot = FakeContext().fetch_html_and_snapshot
+        
+        try:
+            # Re-run adaptive extraction with rendered HTML
+            logger.info("Re-running adaptive extraction with rendered HTML")
+            data = scrape_project_adaptive(
+                url=url,
+                fallback_mapping=fallback_mapping,
+                debug=debug,
+                ai_enabled=ai_enabled,
+                ai_model=ai_model,
+                normalize_roles=normalize_roles,
+                strategy_file=strategy_file
+            )
+        finally:
+            # Restore original fetch function
+            fetch_html_and_snapshot = original_fetch
+    
     return data
 
 def agent_scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: bool = False, 
