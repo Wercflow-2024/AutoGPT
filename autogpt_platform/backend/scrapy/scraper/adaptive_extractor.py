@@ -1,0 +1,1148 @@
+"""
+Adaptive extraction framework that uses pattern detection, multiple strategies,
+and intelligent fallbacks to handle a wide variety of site structures.
+"""
+
+import os
+import re
+import json
+import hashlib
+import datetime
+import logging
+from typing import Dict, List, Optional, Tuple, Any, Callable
+from urllib.parse import urljoin, urlparse
+from bs4 import BeautifulSoup, Tag
+
+from autogpt_platform.backend.scrapy.scraper.project_scraper import SNAPSHOT_DIR, fetch_html_and_snapshot, normalize_roles_with_ai, suggest_fixes_via_openai, validate_scraped_data
+
+logger = logging.getLogger(__name__)
+
+CONFIG = {
+    "AI_ENABLED": False,
+    "AI_MODEL": "",
+    "FORCE_REFRESH": False,
+}
+
+# Constants for extraction patterns
+PATTERNS = {
+    "role_person_split": re.compile(r"([^:]+):\s*(.+)"),  # Pattern for "Role: Person"
+    "year": re.compile(r"\b(20\d{2})\b"),                 # Pattern for year (2000-2099)
+    "client_brand": re.compile(r"\b(?:client|brand)\b", re.IGNORECASE)  # Pattern for client/brand indicators
+}
+
+class AdaptiveExtractor:
+    """
+    Flexible extraction system that can adapt to different website structures
+    """
+    
+    def __init__(self, html: str, url: str, fallback_mapping: Dict = None, debug: bool = False):
+        """Initialize with HTML content and URL"""
+        self.html = html
+        self.url = url
+        self.fallback_mapping = fallback_mapping or {}
+        self.debug = debug
+        self.soup = BeautifulSoup(html, "html.parser")
+        self.domain = urlparse(url).netloc.lower()
+        
+        # Set up logging
+        self.logger = logging.getLogger("adaptive_extractor")
+        if debug:
+            self.logger.setLevel(logging.DEBUG)
+        
+        # Detection results
+        self.structure_type = self._detect_structure()
+        
+        # Extraction results
+        self.data = {
+            "title": "",
+            "description": "",
+            "client": "",
+            "date": "",
+            "location": "",
+            "format": "",
+            "video_links": [],
+            "poster_image": "",
+            "companies": [],
+            "meta": {
+                "url": url,
+                "scraped_at": datetime.datetime.now().isoformat(),
+                "unknown_roles": [],
+                "structure_type": self.structure_type,
+            }
+        }
+    
+    def extract(self) -> Dict:
+        """Main extraction method that coordinates the process"""
+        self.logger.info(f"Extracting data using structure type: {self.structure_type}")
+        
+        # Extract basic metadata that's common across most structures
+        self._extract_basic_metadata()
+        
+        # Extract media elements (videos, images)
+        self._extract_media()
+        
+        # Extract company and credit information using the appropriate method
+        if self.structure_type == "lbbonline_v2":
+            self._extract_credits_lbbonline_v2()
+        elif self.structure_type == "lbbonline_v1":
+            self._extract_credits_lbbonline_v1()
+        elif self.structure_type == "dandad":
+            self._extract_credits_dandad()
+        else:
+            # Generic extraction as fallback
+            self._extract_credits_generic()
+        
+        # If companies extraction failed, try alternative methods
+        if not self.data["companies"]:
+            self.logger.info("Primary credit extraction failed, trying alternatives")
+            self._extract_credits_alternative()
+        
+        # Finalize the extracted data
+        self._finalize_data()
+        
+        return self.data
+    
+    def _detect_structure(self) -> str:
+        """Detect the structure type of the page"""
+        # LBB Online 2025 design
+        if "lbbonline.com" in self.domain:
+            if (self.soup.select("span.font-barlow.font-bold.text-black") or 
+                self.soup.select("div.flex.space-y-4") or 
+                self.soup.select(".rich-text.space-y-5")):
+                return "lbbonline_v2"
+            elif (self.soup.select(".credit-entry") or 
+                  self.soup.select(".company-name") or 
+                  self.soup.select(".field--name-field-basic-info")):
+                return "lbbonline_v1"
+                
+        # D&AD structure
+        if "dandad.org" in self.domain or (
+            self.soup.select(".award-credits-list") or 
+            self.soup.select(".award-meta-details")):
+            return "dandad"
+        
+        # Fall back to generic structure detection
+        page_text = self.soup.get_text().lower()
+        if "credit" in page_text and ("director" in page_text or "producer" in page_text):
+            # Looks like a project page with credits
+            return "generic_credits"
+        
+        return "unknown"
+    
+    def _extract_basic_metadata(self):
+        """Extract basic metadata like title, description, etc."""
+        # Title - try multiple selectors
+        for selector in ["h1", ".title", "header h2", ".main-title", "article h1"]:
+            title_elem = self.soup.select_one(selector)
+            if title_elem and title_elem.get_text(strip=True):
+                self.data["title"] = title_elem.get_text(strip=True)
+                break
+        
+        # Description - try multiple approaches
+        description = ""
+        
+        # Approach 1: Structured description elements
+        for selector in [".description", ".field--name-field-description", 
+                         ".rich-text.space-y-5 p", ".award-content-intro", 
+                         ".content p:first-of-type", "article p"]:
+            desc_elems = self.soup.select(selector)
+            if desc_elems:
+                description = " ".join(elem.get_text(strip=True) for elem in desc_elems if elem.get_text(strip=True))
+                break
+        
+        # Approach 2: First paragraph after title
+        if not description and self.data["title"]:
+            title_elem = self.soup.find(string=re.compile(re.escape(self.data["title"])))
+            if title_elem and title_elem.parent:
+                next_p = title_elem.parent.find_next("p")
+                if next_p:
+                    description = next_p.get_text(strip=True)
+        
+        self.data["description"] = description
+        
+        # Project metadata (client, date, etc.)
+        self._extract_project_metadata()
+    
+    def _extract_project_metadata(self):
+        """Extract project metadata like client, date, location, format"""
+        # Try structured metadata first
+        metadata_selectors = [
+            ".field--name-field-basic-info .field__item",
+            ".credit-meta div",
+            ".award-meta-details",
+            ".project-info li",
+            ".metadata li",
+            ".details div"
+        ]
+        
+        metadata_elements = []
+        for selector in metadata_selectors:
+            elements = self.soup.select(selector)
+            if elements:
+                metadata_elements = elements
+                break
+        
+        # Process structured metadata
+        for elem in metadata_elements:
+            text = elem.get_text(" ", strip=True).lower()
+            
+            # Check for client/brand
+            if PATTERNS["client_brand"].search(text):
+                self.data["client"] = text.split(":", 1)[-1].strip() if ":" in text else text
+            
+            # Check for year
+            year_match = PATTERNS["year"].search(text)
+            if year_match and not self.data["date"]:
+                self.data["date"] = year_match.group(1)
+            
+            # Check for location
+            if "location" in text.lower() and ":" in text:
+                self.data["location"] = text.split(":", 1)[-1].strip()
+            
+            # Check for format
+            if any(keyword in text.lower() for keyword in ["format", "type", "category"]):
+                self.data["format"] = text.split(":", 1)[-1].strip() if ":" in text else text
+        
+        # If client is still missing, try alternative approaches
+        if not self.data["client"]:
+            # Look for metadata in HTML meta tags
+            meta_desc = self.soup.find("meta", attrs={"name": "description"})
+            if meta_desc:
+                desc_text = meta_desc.get("content", "")
+                client_match = re.search(r"(?:client|brand):\s*([^,\.]+)", desc_text, re.IGNORECASE)
+                if client_match:
+                    self.data["client"] = client_match.group(1).strip()
+            
+            # Extract from title if it contains "for" or similar patterns
+            if self.data["title"]:
+                title = self.data["title"]
+                for_match = re.search(r"\s+(?:for|by|client:)\s+([^-\|]+)", title, re.IGNORECASE)
+                if for_match:
+                    self.data["client"] = for_match.group(1).strip()
+        
+        # If date is still missing, look for it in the page
+        if not self.data["date"]:
+            # Try to find year in the title
+            if self.data["title"]:
+                year_match = PATTERNS["year"].search(self.data["title"])
+                if year_match:
+                    self.data["date"] = year_match.group(1)
+            
+            # Look for a date element
+            date_elements = self.soup.select(".date, .year, .publish-date")
+            if date_elements:
+                for elem in date_elements:
+                    year_match = PATTERNS["year"].search(elem.get_text())
+                    if year_match:
+                        self.data["date"] = year_match.group(1)
+                        break
+    
+    def _extract_media(self):
+        """Extract media elements like videos and images"""
+        # Find video embeds
+        video_links = []
+        
+        # Look for iframes with video URLs
+        for iframe in self.soup.find_all("iframe"):
+            src = iframe.get("src", "")
+            if src and any(provider in src for provider in [
+                "youtube", "vimeo", "lbbonline", "player", "video"
+            ]):
+                video_links.append(src)
+        
+        # Look for video elements
+        for video in self.soup.find_all("video"):
+            src = video.get("src", "")
+            if src:
+                video_links.append(src)
+            
+            # Check for source elements inside video
+            for source in video.find_all("source"):
+                src = source.get("src", "")
+                if src:
+                    video_links.append(src)
+        
+        # Look for links to videos
+        for a in self.soup.find_all("a", href=True):
+            href = a.get("href", "")
+            if any(provider in href for provider in ["youtube", "vimeo", "player"]):
+                if href not in video_links:
+                    video_links.append(href)
+        
+        self.data["video_links"] = video_links
+        
+        # Find poster image
+        poster_image = ""
+        
+        # Try OpenGraph image first
+        og_image = self.soup.find("meta", property="og:image")
+        if og_image:
+            poster_image = og_image.get("content", "")
+        
+        # If no OG image, look for a hero/main image
+        if not poster_image:
+            for selector in [".hero img", ".main-image img", ".featured-image img", 
+                            ".thumbnail img", "article > img"]:
+                img = self.soup.select_one(selector)
+                if img and img.get("src"):
+                    poster_image = img.get("src")
+                    break
+        
+        # If still no image, try first large image
+        if not poster_image:
+            for img in self.soup.find_all("img"):
+                src = img.get("src", "")
+                if src and not src.endswith((".ico", ".svg", "logo")):
+                    width = img.get("width", "0")
+                    height = img.get("height", "0")
+                    try:
+                        if int(width) > 400 or int(height) > 300:
+                            poster_image = src
+                            break
+                    except (ValueError, TypeError):
+                        # If dimensions aren't specified or valid, still consider the image
+                        poster_image = src
+                        break
+        
+        self.data["poster_image"] = poster_image
+        
+        # Also set in assets dict for compatibility
+        self.data["assets"] = {"image_url": poster_image}
+    
+    def _extract_credits_lbbonline_v2(self):
+        """Extract credits using LBB Online 2025 structure"""
+        companies = []
+        unknown_roles = []
+        
+        # Find credit blocks with the new structure
+        credit_blocks = self.soup.select("div.flex.space-y-4")
+        
+        for block in credit_blocks:
+            # Company name is in a span with specific classes
+            company_name_el = block.select_one("span.font-barlow.font-bold.text-black")
+            if not company_name_el:
+                continue
+                
+            company_name = company_name_el.get_text(strip=True)
+            company_id = f"company_{len(companies) + 1}"
+            
+            # Company type might not be explicitly marked
+            company_type = self._guess_company_type(company_name)
+            
+            # Look for roles and people
+            role_elements = block.select("div.team div")
+            
+            people = []
+            for role_el in role_elements:
+                role_text = role_el.get_text(strip=True)
+                
+                # Try to extract role and person from combined text
+                role_match = PATTERNS["role_person_split"].match(role_text)
+                
+                if role_match:
+                    role_name = role_match.group(1).strip()
+                    person_name = role_match.group(2).strip()
+                    
+                    # Create unique person ID
+                    person_id = f"{company_id}_person_{len(people) + 1}"
+                    
+                    people.append({
+                        "person": {
+                            "id": person_id,
+                            "name": person_name,
+                            "url": ""
+                        },
+                        "role": role_name
+                    })
+                else:
+                    # If no colon, assume it's just a role without a person
+                    unknown_roles.append({"person_id": "unknown", "name": role_text})
+            
+            if company_name and (people or company_type):
+                companies.append({
+                    "id": company_id,
+                    "name": company_name,
+                    "type": company_type,
+                    "url": "",
+                    "credits": people
+                })
+        
+        self.data["companies"] = companies
+        self.data["meta"]["unknown_roles"] = unknown_roles
+    
+    def _extract_credits_lbbonline_v1(self):
+        """Extract credits using LBB Online traditional structure"""
+        companies = []
+        unknown_roles = []
+        
+        # Find credit blocks
+        credit_blocks = self.soup.select(".credit-entry")
+        
+        for block in credit_blocks:
+            # Extract company info
+            company_link = block.select_one(".company-name a")
+            if not company_link:
+                continue
+                
+            company_name = company_link.get_text(strip=True)
+            company_url = urljoin(self.url, company_link["href"]) if "href" in company_link.attrs else ""
+            company_id = self._extract_id_from_url(company_url) or f"company_{len(companies) + 1}"
+            
+            # Extract company type
+            company_type_el = block.select_one(".company-type")
+            company_type = company_type_el.get_text(strip=True) if company_type_el else ""
+            
+            if not company_type and company_id in self.fallback_mapping.get("company_types", {}):
+                company_type = self.fallback_mapping["company_types"][company_id]
+            
+            # Extract roles and people
+            people = []
+            role_blocks = block.select(".roles .role")
+            
+            for role_block in role_blocks:
+                role_name_el = role_block.select_one(".role-name")
+                role = role_name_el.get_text(strip=True) if role_name_el else ""
+                
+                for person_el in role_block.select(".person"):
+                    person_link = person_el.select_one("a")
+                    person_name_el = person_el.select_one("a") or person_el
+                    person_name = person_name_el.get_text(strip=True)
+                    
+                    person_url = ""
+                    if person_link and "href" in person_link.attrs:
+                        person_url = urljoin(self.url, person_link["href"])
+                    
+                    person_id = self._extract_id_from_url(person_url) or f"{company_id}_person_{len(people) + 1}"
+                    
+                    if not role and person_id in self.fallback_mapping.get("role_mappings", {}):
+                        role = self.fallback_mapping["role_mappings"][person_id]
+                    elif not role:
+                        unknown_roles.append({"person_id": person_id, "name": person_name})
+                    
+                    people.append({
+                        "person": {
+                            "id": person_id,
+                            "name": person_name,
+                            "url": person_url
+                        },
+                        "role": role
+                    })
+            
+            companies.append({
+                "id": company_id,
+                "name": company_name,
+                "type": company_type,
+                "url": company_url,
+                "credits": people
+            })
+        
+        self.data["companies"] = companies
+        self.data["meta"]["unknown_roles"] = unknown_roles
+    
+    def _extract_credits_dandad(self):
+        """Extract credits using D&AD structure"""
+        companies = []
+        unknown_roles = []
+        
+        # Find credit blocks
+        credit_blocks = self.soup.select(".award-credits-list")
+        
+        for block in credit_blocks:
+            # Extract company info
+            company_name_el = block.select_one(".company-name")
+            if not company_name_el:
+                continue
+                
+            company_name = company_name_el.get_text(strip=True)
+            company_id = f"company_{len(companies) + 1}"
+            
+            # Extract company type
+            company_type_el = block.select_one(".company-role")
+            company_type = company_type_el.get_text(strip=True) if company_type_el else ""
+            
+            # Extract roles and people
+            people = []
+            role_blocks = block.select(".award-credits-role")
+            
+            for role_block in role_blocks:
+                role_name_el = role_block.select_one(".role-title")
+                role = role_name_el.get_text(strip=True) if role_name_el else ""
+                
+                for person_el in role_block.select(".person-name"):
+                    person_name_el = person_el.select_one("span") or person_el
+                    person_name = person_name_el.get_text(strip=True)
+                    person_id = f"{company_id}_person_{len(people) + 1}"
+                    
+                    if not role:
+                        unknown_roles.append({"person_id": person_id, "name": person_name})
+                    
+                    people.append({
+                        "person": {
+                            "id": person_id,
+                            "name": person_name,
+                            "url": ""
+                        },
+                        "role": role
+                    })
+            
+            companies.append({
+                "id": company_id,
+                "name": company_name,
+                "type": company_type,
+                "url": "",
+                "credits": people
+            })
+        
+        self.data["companies"] = companies
+        self.data["meta"]["unknown_roles"] = unknown_roles
+    
+    def _extract_credits_generic(self):
+        """Extract credits using generic pattern recognition"""
+        companies = []
+        unknown_roles = []
+        
+        # First approach: Look for company sections with clear headers
+        company_sections = []
+        
+        # Try to find headers that might introduce companies
+        for header in self.soup.find_all(['h2', 'h3', 'h4', 'strong', 'b']):
+            header_text = header.get_text(strip=True)
+            
+            # Skip if it's not a company header
+            if len(header_text) < 2 or len(header_text) > 50:
+                continue
+                
+            if re.search(r'(prod|agenc|studio|post|director|brand)', header_text, re.IGNORECASE):
+                # This might be a company header
+                company_sections.append({
+                    'header': header,
+                    'name': header_text,
+                    'type': self._guess_company_type(header_text)
+                })
+        
+        # Process each potential company section
+        for section in company_sections:
+            header = section['header']
+            company_name = section['name']
+            company_type = section['type']
+            company_id = f"company_{len(companies) + 1}"
+            
+            # Look for role/person pairs in the elements following this header
+            people = []
+            current = header.next_sibling
+            
+            # Process until we hit the next header or run out of siblings
+            while current and current.name not in ['h2', 'h3', 'h4']:
+                if isinstance(current, Tag):
+                    text = current.get_text(strip=True)
+                    
+                    # Check for "Role: Person" pattern
+                    role_match = PATTERNS["role_person_split"].match(text)
+                    
+                    if role_match:
+                        role_name = role_match.group(1).strip()
+                        person_name = role_match.group(2).strip()
+                        
+                        person_id = f"{company_id}_person_{len(people) + 1}"
+                        
+                        people.append({
+                            "person": {
+                                "id": person_id,
+                                "name": person_name,
+                                "url": ""
+                            },
+                            "role": role_name
+                        })
+                    elif text and len(text) > 2:
+                        # This might be plain text content
+                        # Check for roles/people in other formats
+                        lines = text.split('\n')
+                        for line in lines:
+                            if ':' in line:
+                                parts = line.split(':', 1)
+                                if len(parts) == 2:
+                                    role_name = parts[0].strip()
+                                    person_name = parts[1].strip()
+                                    
+                                    if role_name and person_name:
+                                        person_id = f"{company_id}_person_{len(people) + 1}"
+                                        
+                                        people.append({
+                                            "person": {
+                                                "id": person_id,
+                                                "name": person_name,
+                                                "url": ""
+                                            },
+                                            "role": role_name
+                                        })
+                
+                current = current.next_sibling
+            
+            # Only add the company if we found people
+            if people:
+                companies.append({
+                    "id": company_id,
+                    "name": company_name,
+                    "type": company_type,
+                    "url": "",
+                    "credits": people
+                })
+        
+        # If we didn't find companies with the structured approach, try a paragraph-based approach
+        if not companies:
+            self._extract_credits_from_paragraphs()
+        else:
+            self.data["companies"] = companies
+            self.data["meta"]["unknown_roles"] = unknown_roles
+    
+    def _extract_credits_from_paragraphs(self):
+        """Extract credits from paragraphs - a more aggressive approach"""
+        companies = []
+        unknown_roles = []
+        
+        # Look for paragraphs that might contain credits
+        credit_paragraphs = []
+        
+        # Potential containing sections
+        credit_sections = self.soup.select(".credits, .team, .crew, .credit, article, section")
+        
+        if not credit_sections:
+            # If no specific sections found, use the whole body
+            credit_sections = [self.soup.find('body')]
+        
+        # Extract paragraphs from these sections
+        for section in credit_sections:
+            if not section:
+                continue
+                
+            paragraphs = section.find_all(['p', 'div', 'li'])
+            credit_paragraphs.extend(paragraphs)
+        
+        # Process paragraphs looking for company headers and role/person info
+        current_company = None
+        
+        for p in credit_paragraphs:
+            text = p.get_text(strip=True)
+            
+            # Skip empty paragraphs
+            if not text:
+                continue
+            
+            # Check if this might be a company header
+            if p.find('strong') or p.find('b') or p.name == 'h3' or p.name == 'h4' or len(text) < 40:
+                company_type = self._guess_company_type(text)
+                
+                if company_type or re.search(r'(prod|agenc|studio|post|director|brand)', text, re.IGNORECASE):
+                    # This looks like a company header
+                    current_company = {
+                        "id": f"company_{len(companies) + 1}",
+                        "name": text,
+                        "type": company_type,
+                        "url": "",
+                        "credits": []
+                    }
+                    companies.append(current_company)
+                    continue
+            
+            # If we have a current company, look for role/person info
+            if current_company and ':' in text:
+                # This might be role: person format
+                lines = text.split('\n')
+                
+                for line in lines:
+                    if ':' not in line:
+                        continue
+                        
+                    parts = line.split(':', 1)
+                    role_name = parts[0].strip()
+                    person_text = parts[1].strip()
+                    
+                    # Person text might contain multiple names
+                    person_names = re.split(r',\s*(?:and\s+)?|\s+and\s+', person_text)
+                    
+                    for person_name in person_names:
+                        person_name = person_name.strip()
+                        if not person_name:
+                            continue
+                            
+                        person_id = f"{current_company['id']}_person_{len(current_company['credits']) + 1}"
+                        
+                        current_company["credits"].append({
+                            "person": {
+                                "id": person_id,
+                                "name": person_name,
+                                "url": ""
+                            },
+                            "role": role_name
+                        })
+        
+        # If we found companies, update the data
+        if companies:
+            # Filter out companies without credits
+            self.data["companies"] = [c for c in companies if c["credits"]]
+            self.data["meta"]["unknown_roles"] = unknown_roles
+    
+    def _extract_credits_alternative(self):
+        """Alternative extraction method when other methods fail"""
+        # If the primary extraction methods failed, try to extract from tables
+        if not self.data["companies"]:
+            self._extract_credits_from_tables()
+        
+        # If still no companies, try looking for credits in list items
+        if not self.data["companies"]:
+            self._extract_credits_from_lists()
+        
+        # If still nothing, try the most aggressive approach
+        if not self.data["companies"]:
+            self._extract_credits_desperate()
+    
+    def _extract_credits_from_tables(self):
+        """Extract credits from tables"""
+        companies = []
+        
+        # Find tables that might contain credits
+        tables = self.soup.find_all('table')
+        
+        for table in tables:
+            # Check if this table has enough rows to be a credits table
+            rows = table.find_all('tr')
+            if len(rows) < 2:
+                continue
+            
+            # Try to determine if this is a credits table
+            headers = [h.get_text(strip=True).lower() for h in rows[0].find_all(['th', 'td'])]
+            if not any(term in ' '.join(headers) for term in ['company', 'role', 'name', 'credit']):
+                continue
+            
+            # This looks like a credits table
+            company_name = "Unknown Company"
+            company_type = ""
+            company_id = f"company_{len(companies) + 1}"
+            people = []
+            
+            # Try to find a company name in a caption or nearby heading
+            caption = table.find('caption')
+            if caption:
+                company_name = caption.get_text(strip=True)
+                company_type = self._guess_company_type(company_name)
+            else:
+                # Look for a heading before the table
+                prev = table.previous_sibling
+                while prev and not (isinstance(prev, Tag) and prev.name in ['h1', 'h2', 'h3', 'h4', 'h5']):
+                    prev = prev.previous_sibling
+                
+                if prev and isinstance(prev, Tag):
+                    company_name = prev.get_text(strip=True)
+                    company_type = self._guess_company_type(company_name)
+            
+            # Process data rows
+            for row in rows[1:]:
+                cells = row.find_all(['td', 'th'])
+                if len(cells) < 2:
+                    continue
+                
+                # Try to identify role and person columns
+                role_col = 0
+                person_col = 1
+                
+                # If we have headers, use them to guess the columns
+                if headers:
+                    for i, header in enumerate(headers):
+                        if any(term in header for term in ['role', 'position', 'job']):
+                            role_col = i
+                        elif any(term in header for term in ['name', 'person', 'who']):
+                            person_col = i
+                
+                # Extract role and person
+                if role_col < len(cells) and person_col < len(cells):
+                    role_name = cells[role_col].get_text(strip=True)
+                    person_name = cells[person_col].get_text(strip=True)
+                    
+                    if role_name and person_name:
+                        person_id = f"{company_id}_person_{len(people) + 1}"
+                        
+                        people.append({
+                            "person": {
+                                "id": person_id,
+                                "name": person_name,
+                                "url": ""
+                            },
+                            "role": role_name
+                        })
+            
+            # Add the company if we found people
+            if people:
+                companies.append({
+                    "id": company_id,
+                    "name": company_name,
+                    "type": company_type,
+                    "url": "",
+                    "credits": people
+                })
+        
+        if companies:
+            self.data["companies"] = companies
+    
+    def _extract_credits_from_lists(self):
+        """Extract credits from list items"""
+        companies = []
+        
+        # Find lists that might contain credits
+        lists = self.soup.find_all(['ul', 'ol'])
+        
+        for list_elem in lists:
+            # Check if this list has enough items
+            items = list_elem.find_all('li')
+            if len(items) < 2:
+                continue
+            
+            # Check if items look like credits (contain colons or credit-like terms)
+            credit_items = [item for item in items if ':' in item.get_text() or
+                           any(term in item.get_text().lower() for term in 
+                               ['director', 'producer', 'editor', 'creative'])]
+            
+            if len(credit_items) < 2:
+                continue
+            
+            # This looks like a credits list
+            company_name = "Unknown Company"
+            company_type = ""
+            company_id = f"company_{len(companies) + 1}"
+            people = []
+            
+            # Try to find a company name in a heading before the list
+            prev = list_elem.previous_sibling
+            while prev and not (isinstance(prev, Tag) and prev.name in ['h1', 'h2', 'h3', 'h4', 'h5']):
+                prev = prev.previous_sibling
+            
+            if prev and isinstance(prev, Tag):
+                company_name = prev.get_text(strip=True)
+                company_type = self._guess_company_type(company_name)
+            
+            # Process list items
+            for item in credit_items:
+                text = item.get_text(strip=True)
+                
+                # Try to extract role and person
+                if ':' in text:
+                    parts = text.split(':', 1)
+                    role_name = parts[0].strip()
+                    person_text = parts[1].strip()
+                    
+                    # Person text might contain multiple names
+                    person_names = re.split(r',\s*(?:and\s+)?|\s+and\s+', person_text)
+                    
+                    for person_name in person_names:
+                        person_name = person_name.strip()
+                        if not person_name:
+                            continue
+                            
+                        person_id = f"{company_id}_person_{len(people) + 1}"
+                        
+                        people.append({
+                            "person": {
+                                "id": person_id,
+                                "name": person_name,
+                                "url": ""
+                            },
+                            "role": role_name
+                        })
+                else:
+                    # Try to guess role and person
+                    match = re.match(r'(.*?)\s+-\s+(.*)', text)
+                    if match:
+                        role_name = match.group(1).strip()
+                        person_name = match.group(2).strip()
+                        
+                        if role_name and person_name:
+                            person_id = f"{company_id}_person_{len(people) + 1}"
+                            
+                            people.append({
+                                "person": {
+                                    "id": person_id,
+                                    "name": person_name,
+                                    "url": ""
+                                },
+                                "role": role_name
+                            })
+            
+            # Add the company if we found people
+            if people:
+                companies.append({
+                    "id": company_id,
+                    "name": company_name,
+                    "type": company_type,
+                    "url": "",
+                    "credits": people
+                })
+        
+        if companies:
+            self.data["companies"] = companies
+    
+    def _extract_credits_desperate(self):
+        """Most aggressive credit extraction approach"""
+        # Create a single default company
+        company = {
+            "id": "company_1",
+            "name": self.data.get("client", "Unknown Company"),
+            "type": "Unknown",
+            "url": "",
+            "credits": []
+        }
+        
+        # Look for any text that matches role patterns
+        role_patterns = [
+            r'(\w+[\w\s]+):\s+([\w\s]+)',  # Role: Person
+            r'(director|producer|editor|creative director|cinematographer|dop)\s+(?:is|was|:)?\s+([\w\s]+)',  # Role is Person
+            r'([\w\s]+)\s+\((\w+[\w\s]+)\)'  # Person (Role)
+        ]
+        
+        # Get all text from the page
+        all_text = self.soup.get_text()
+        
+        # Find all potential matches
+        for pattern in role_patterns:
+            matches = re.finditer(pattern, all_text, re.IGNORECASE)
+            for match in matches:
+                if pattern.startswith(r'([\w\s]+)\s+\('):
+                    # Person (Role) format
+                    person_name = match.group(1).strip()
+                    role_name = match.group(2).strip()
+                else:
+                    # Role: Person format
+                    role_name = match.group(1).strip()
+                    person_name = match.group(2).strip()
+                
+                # Skip if either field is missing
+                if not role_name or not person_name:
+                    continue
+                
+                person_id = f"company_1_person_{len(company['credits']) + 1}"
+                
+                # Check if this person is already in our list
+                duplicate = False
+                for credit in company["credits"]:
+                    if credit["person"]["name"].lower() == person_name.lower():
+                        duplicate = True
+                        break
+                
+                if not duplicate:
+                    company["credits"].append({
+                        "person": {
+                            "id": person_id,
+                            "name": person_name,
+                            "url": ""
+                        },
+                        "role": role_name
+                    })
+        
+        # Add the company if we found people
+        if company["credits"]:
+            self.data["companies"] = [company]
+    
+    def _finalize_data(self):
+        """Finalize the extracted data and clean it up"""
+        # Add extraction metadata
+        self.data["meta"]["extraction_method"] = self.structure_type
+        
+        # Make sure we have the basic fields, even if empty
+        if not self.data.get("assets"):
+            self.data["assets"] = {"image_url": self.data.get("poster_image", "")}
+        
+        # Clean up companies list
+        if self.data.get("companies"):
+            # Remove companies without credits or names
+            self.data["companies"] = [
+                company for company in self.data["companies"] 
+                if company.get("name") and company.get("credits")
+            ]
+            
+            # Clean up company names
+            for company in self.data["companies"]:
+                company["name"] = self._clean_text(company["name"])
+                
+                # Clean up credits
+                if company.get("credits"):
+                    for credit in company["credits"]:
+                        if credit.get("person") and credit["person"].get("name"):
+                            credit["person"]["name"] = self._clean_text(credit["person"]["name"])
+                        
+                        if credit.get("role"):
+                            credit["role"] = self._clean_text(credit["role"])
+        
+        # Try to derive company type if missing
+        for company in self.data.get("companies", []):
+            if not company.get("type"):
+                company["type"] = self._guess_company_type(company["name"])
+    
+    def _extract_id_from_url(self, url: str) -> Optional[str]:
+        """Extract ID from URL like /12345/ or similar patterns"""
+        if not url:
+            return None
+            
+        match = re.search(r"/(\d+)/?$", url)
+        return match.group(1) if match else None
+    
+    def _guess_company_type(self, name: str) -> str:
+        """Guess company type based on name or patterns"""
+        name_lower = name.lower()
+        
+        # Define type mapping with likely keywords
+        type_mapping = {
+            "production": ["production", "films", "pictures", "studios"],
+            "agency": ["agency", "creative", "advertising", "digital"],
+            "brand": ["brand", "client"],
+            "post production": ["post", "vfx", "effects", "post-production"],
+            "sound": ["sound", "audio", "music", "studio"],
+            "editorial": ["editorial", "edit", "editing"],
+        }
+        
+        # Check each type
+        for company_type, keywords in type_mapping.items():
+            if any(keyword in name_lower for keyword in keywords):
+                return company_type
+        
+        # If no match, return empty string
+        return ""
+    
+    def _clean_text(self, text: str) -> str:
+        """Clean up text fields by removing extra whitespace, etc."""
+        if not text:
+            return ""
+            
+        # Replace multiple whitespace with a single space
+        text = re.sub(r'\s+', ' ', text)
+        
+        # Remove leading/trailing whitespace
+        text = text.strip()
+        
+        return text
+
+def extract_project_adaptive(url: str, html: str, fallback_mapping: Dict = None, debug: bool = False) -> Dict:
+    """
+    Main extraction function that uses the adaptive extractor
+    
+    Args:
+        url: The URL being scraped
+        html: The HTML content
+        fallback_mapping: Optional mapping for fallbacks
+        debug: Whether to enable debug output
+        
+    Returns:
+        Dictionary with extracted project data
+    """
+    extractor = AdaptiveExtractor(html, url, fallback_mapping, debug)
+    return extractor.extract()
+
+# Integration with your existing scraper:
+def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: bool = False, 
+                  ai_enabled: bool = None, ai_model: Optional[str] = None,
+                  normalize_roles: bool = False, strategy_file: Optional[str] = None,
+                  strategy_name: Optional[str] = None) -> Dict:
+    """
+    Main function to scrape a project page with adaptive extraction.
+
+    Args:
+        url: URL of the project page
+        fallback_mapping: Optional mapping for role/company normalization
+        debug: Enable debug output
+        ai_enabled: Override config setting for AI enhancement
+        ai_model: Override config setting for AI model
+        normalize_roles: Use AI to normalize unknown roles
+        strategy_file: Path to a JSON file containing a custom strategy
+        strategy_name: Name of a strategy (domain/version) to use
+
+    Returns:
+        Dictionary with project data
+    """
+    # Override config settings if specified
+    if ai_enabled is not None:
+        CONFIG["AI_ENABLED"] = ai_enabled
+
+    if ai_model:
+        CONFIG["AI_MODEL"] = ai_model
+
+    # Load fallback mapping if not provided
+    if fallback_mapping is None:
+        try:
+            fallback_path = os.path.join(os.path.dirname(__file__), "fallback_mapping.json")
+            with open(fallback_path, "r", encoding="utf-8") as f:
+                fallback_mapping = json.load(f)
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load fallback mapping: {e}")
+            fallback_mapping = {"company_types": {}, "role_mappings": {}}
+
+    # Step 1: Fetch HTML and save snapshot
+    try:
+        html, from_cache = fetch_html_and_snapshot(url, force_refresh=CONFIG["FORCE_REFRESH"])
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch page: {e}")
+        return {}
+
+    # Step 2: Use the adaptive extractor to extract data
+    logger.info(f"📊 Using adaptive extraction for {url}")
+    data = extract_project_adaptive(url, html, fallback_mapping, debug)
+    
+    # Step 3: Check for missing elements
+    missing_elements = validate_scraped_data(data)
+    
+    # Step 4: If validation failed and AI is enabled, use AI suggestions to enhance
+    if missing_elements and CONFIG["AI_ENABLED"]:
+        try:
+            # Try AI enhancement for missing elements
+            snapshot_path = os.path.join(SNAPSHOT_DIR, f"{urlparse(url).netloc.replace('www.', '')}_{hashlib.md5(url.encode()).hexdigest()[:10]}.html")
+            logger.info(f"🤖 Using AI to enhance extraction for missing elements: {', '.join(missing_elements)}")
+            
+            # Get AI-suggested selectors
+            fix_suggestions = suggest_fixes_via_openai(html, url, missing_elements, snapshot_path)
+            
+            # Record AI suggestions in metadata
+            data["meta"]["missing_elements"] = missing_elements
+            data["meta"]["ai_suggestions"] = fix_suggestions.get("suggestions", {})
+            
+            # Try to reextract with the AI suggestions if we're still missing companies
+            if "companies" in missing_elements and fix_suggestions.get("suggestions", {}).get("companies"):
+                logger.info("🔄 Re-extracting with AI suggestions for companies")
+                # Create a soup from the HTML
+                soup = BeautifulSoup(html, "html.parser")
+                
+                # Try the AI-suggested companies selector
+                companies_selector = fix_suggestions["suggestions"]["companies"]
+                company_elements = soup.select(companies_selector)
+                
+                if company_elements:
+                    logger.info(f"✅ Found {len(company_elements)} potential company elements with AI selector")
+                    
+                    # Create a dummy company for each element found
+                    companies = []
+                    for i, element in enumerate(company_elements):
+                        company_name = element.get_text(strip=True)
+                        if not company_name:
+                            continue
+                            
+                        companies.append({
+                            "id": f"ai_company_{i+1}",
+                            "name": company_name,
+                            "type": "",
+                            "url": "",
+                            "credits": []
+                        })
+                    
+                    if companies:
+                        data["companies"] = companies
+                        logger.info(f"✅ Added {len(companies)} companies from AI suggestions")
+                        
+                        # Update missing elements
+                        missing_elements.remove("companies")
+        except Exception as e:
+            logger.error(f"❌ Error in AI enhancement: {e}")
+    
+    # Step 5: Normalize roles with AI if requested
+    if normalize_roles and CONFIG["AI_ENABLED"] and data.get("meta", {}).get("unknown_roles"):
+        data = normalize_roles_with_ai(data, html)
+
+    # Step 6: Return the structured data
+    if debug:
+        logger.info(json.dumps(data, indent=2))
+
+    return data
