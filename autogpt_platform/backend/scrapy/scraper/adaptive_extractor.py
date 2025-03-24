@@ -434,6 +434,14 @@ class AdaptiveExtractor:
     def _extract_credits_lbbonline_v2(self):
         """Extract credits using LBB Online 2025 structure"""
         try:
+            # First try to extract from embedded JSON
+            companies = self._extract_credits_from_json(self.html)
+            if companies:
+                logger.info(f"Successfully extracted {len(companies)} companies from embedded JSON")
+                self.data["companies"] = companies
+                self.data["meta"]["extraction_method"] = "lbbonline_json"
+                return
+            
             companies = []
             unknown_roles = []
             
@@ -1088,7 +1096,133 @@ class AdaptiveExtractor:
                 self.data["companies"] = companies
         except Exception as e:
             logger.error(f"❌ Error in list-based credit extraction: {str(e)}")
-    
+
+    def _extract_credits_from_json(self, html: str) -> List[Dict]:
+        """
+        Extract credits from embedded JSON in the page
+        """
+        companies = []
+        
+        # Try to find the lbb_credits JSON
+        credits_match = re.search(r'"lbb_credits":"((?:\\.|[^"\\])*)"', html)
+        if credits_match:
+            credits_str = credits_match.group(1)
+            if credits_str:
+                # Unescape
+                credits_str = credits_str.replace('\\"', '"').replace('\\\\', '\\').replace('\\/', '/')
+                try:
+                    credits_str = credits_str.encode('utf-8').decode('unicode_escape')
+                except Exception as e:
+                    logger.debug(f"Unicode escape decoding failed: {e}")
+                
+                try:
+                    credits_data = json.loads(credits_str)
+                    # Process the credits data
+                    for section in credits_data:
+                        if 'cat_value' in section and len(section['cat_value']) >= 2:
+                            company_id, company_name = section['cat_value']
+                            cat_id = str(section.get("cat_id", ""))
+                            
+                            # Determine company type from mapping
+                            company_type = ""
+                            if cat_id in self.fallback_mapping.get("company_types", {}):
+                                company_type = self.fallback_mapping["company_types"][cat_id]
+                            
+                            # Create company
+                            company = {
+                                "id": company_id,
+                                "name": company_name,
+                                "type": company_type,
+                                "url": f"https://lbbonline.com/companies/{company_id}",
+                                "credits": []
+                            }
+                            
+                            # Process roles
+                            for field in section.get('fields', []):
+                                if 'field_value' in field and field['field_value'] is not None and len(field['field_value']) >= 2:
+                                    person_id, person_name = field['field_value']
+                                    field_id = str(field.get("field_id", ""))
+                                    
+                                    # Get role from mapping
+                                    role_name = ""
+                                    if field_id in self.fallback_mapping.get("role_mappings", {}):
+                                        role_name = self.fallback_mapping["role_mappings"][field_id]
+                                    
+                                    # Add role to company
+                                    company["credits"].append({
+                                        "person": {
+                                            "id": person_id,
+                                            "name": person_name,
+                                            "url": f"https://lbbonline.com/people/{person_id}"
+                                        },
+                                        "role": role_name
+                                    })
+                            
+                            companies.append(company)
+                    
+                    logger.info(f"Extracted {len(companies)} companies from JSON with {sum(len(c['credits']) for c in companies)} credits")
+                    return companies
+                except json.JSONDecodeError as e:
+                    logger.error(f"Error parsing credits JSON: {e}")
+        
+        # If lbb_credits fails, try old_credits
+        old_credits_match = re.search(r'"old_credits":"([^"]*)"', html)
+        if old_credits_match:
+            old_credits = old_credits_match.group(1).replace('\\n', '\n')
+            if old_credits:
+                return self._parse_old_credits_text(old_credits)
+        
+        return companies
+
+    def _parse_old_credits_text(self, old_credits: str) -> List[Dict]:
+        """
+        Parse old_credits text format into structured credits
+        """
+        companies = []
+        current_company = None
+        current_section = ""
+        
+        lines = old_credits.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            if ':' not in line:
+                # This is a section header (company type)
+                current_section = line
+                continue
+            
+            parts = line.split(':', 1)
+            key = parts[0].strip()
+            value = parts[1].strip() if len(parts) > 1 else ""
+            
+            if key.lower() == 'company name':
+                # New company block
+                company_id = self._clean_text(value).lower().replace(' ', '-')
+                current_company = {
+                    "id": company_id,
+                    "name": value,
+                    "type": current_section,
+                    "url": f"https://lbbonline.com/companies/{company_id}",
+                    "credits": []
+                }
+                companies.append(current_company)
+            elif current_company and key and value:
+                # Role and person
+                person_id = self._clean_text(value).lower().replace(' ', '-')
+                current_company["credits"].append({
+                    "person": {
+                        "id": person_id,
+                        "name": value,
+                        "url": f"https://lbbonline.com/people/{person_id}"
+                    },
+                    "role": key
+                })
+        
+        logger.info(f"Extracted {len(companies)} companies from old_credits with {sum(len(c['credits']) for c in companies)} credits")
+        return companies
+
     def _extract_credits_desperate(self):
         """Most aggressive credit extraction approach"""
         try:
@@ -1343,7 +1477,7 @@ def extract_project_adaptive(url: str, html: str, fallback_mapping: Dict = None,
     logger.info(f"Completed adaptive extraction: found {len(data.get('companies', []))} companies")
     return data
 
-# Integration with scrape_project
+#   Integration with scrape_project
 def scrape_project_adaptive(url: str, fallback_mapping: Optional[Dict] = None, debug: bool = False, 
                   ai_enabled: bool = None, ai_model: Optional[str] = None,
                   normalize_roles: bool = False, strategy_file: Optional[str] = None) -> Dict:
