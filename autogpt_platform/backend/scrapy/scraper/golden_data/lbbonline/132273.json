@@ -1,0 +1,81 @@
+{
+    "url": "https://lbbonline.com/work/132273",
+    "title": "Colorado Lottery - Play by Play",
+    "description": "An innovative outdoor campaign for Hill’s Pet Nutrition emphasizing the importance of nutrition even for humans.",
+    "client": "Colorado Lottery",
+    "campaign": "Play by Play",
+    "date": "24/03/2025",
+    "location": "Denver, USA",
+    "format": "",
+    "video_links": [
+      "https://d2clgeqocjw7k2.cloudfront.net/67e196b6956c28001a81fbc0/high.mp4"
+    ],
+    "poster_image": "https://d2clgeqocjw7k2.cloudfront.net/67e196b6956c28001a81fbc0/frame_0000.png",
+    "companies": [
+      {
+        "id": "",
+        "name": "Futuristic Films",
+        "type": "Production",
+        "url": "https://lbbonline.com/companies/futuristic-films",
+        "credits": [
+          {
+            "person": {
+              "id": "",
+              "name": "Chris Woods",
+              "url": "https://lbbonline.com/people/chris-woods-2"
+            },
+            "role": "Director"
+          },
+          {
+            "person": {
+              "id": "",
+              "name": "Christian Silberbauer",
+              "url": "https://lbbonline.com/people/christian-silberbauer"
+            },
+            "role": "Executive Producer"
+          },
+          {
+            "person": {
+              "id": "",
+              "name": "Dylan Stephens",
+              "url": "https://lbbonline.com/people/dylan-stephens"
+            },
+            "role": "Producer"
+          },
+          {
+            "person": {
+              "id": "",
+              "name": "Brittany Horwege",
+              "url": "https://lbbonline.com/people/brittany-horwege"
+            },
+            "role": "Post Production Supervisor"
+          },
+          {
+            "person": {
+              "id": "",
+              "name": "Mathison Davis",
+              "url": "https://lbbonline.com/people/mathison-davis"
+            },
+            "role": "Editor"
+          },
+          {
+            "person": {
+              "id": "",
+              "name": "Samantha Sigler",
+              "url": "https://lbbonline.com/people/samantha-sigler"
+            },
+            "role": "Line Producer"
+          }
+        ]
+      }
+    ],
+    "assets": {
+      "image_url": "https://d2clgeqocjw7k2.cloudfront.net/67dc3676d06bf5001a5a6c82/frame_0011.png"
+    },
+    "meta": {
+      "gold_standard": true,
+      "scraped_at": "2025-03-24T21:48:00Z",
+      "expected_credits": 4,
+      "notes": "This is the gold standard for project 132273 from LBB."
+    }
+  }
