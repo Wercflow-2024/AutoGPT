@@ -143,6 +143,15 @@ class AdaptiveExtractor:
             # Extract media elements (videos, images)
             self._extract_media()
             
+            # Special case for LBB sites
+            if self.structure_type == "lbbonline_specialized":
+                logger.info("Using specialized LBB extractor")
+            
+            if self._extract_credits_lbb_specialized():
+                # Successfully extracted credits, skip to finalization
+                self._finalize_data()
+                return self.data
+            
             # Extract company and credit information using the appropriate method
             if self.structure_type == "lbbonline_v2":
                 logger.info("Using LBB Online v2 extractor")
@@ -187,6 +196,10 @@ class AdaptiveExtractor:
                 # Add additional logging for credits tab structure
                 for selector in ['.credits-tab', '.tab-selector', '.credits-container']:
                     logger.debug(f"Has {selector}: {bool(self.soup.select(selector))}")
+            
+            
+            if "lbbonline.com" in self.domain:
+                return "lbbonline_specialized"
             
             # LBB Online 2025 design detection
             if "lbbonline.com" in self.domain:
@@ -1389,6 +1402,35 @@ class AdaptiveExtractor:
         except Exception as e:
             logger.error(f"❌ Error in data finalization: {str(e)}")
     
+    def _extract_credits_lbb_specialized(self):
+            """
+            Use the specialized LBB credits extractor for more reliable extraction
+            """
+            try:
+                # Import the specialized extractor for LBB sites
+                from backend.scrapy.scraper.lbb_extractor import extract_lbb_credits
+                
+                # Use it to extract credits
+                lbb_data = extract_lbb_credits(self.html, self.url, self.fallback_mapping, self.debug)
+                
+                if lbb_data.get('companies'):
+                    logger.info(f"Specialized LBB extractor found {len(lbb_data['companies'])} companies")
+                    
+                    # Copy over the relevant data
+                    self.data['companies'] = lbb_data['companies']
+                    self.data['title'] = lbb_data.get('title', self.data['title'])
+                    self.data['client'] = lbb_data.get('brand', self.data['client'])
+                    self.data['video_links'] = [lbb_data['video_url']] if lbb_data.get('video_url') else self.data['video_links']
+                    self.data['poster_image'] = lbb_data.get('image_url', self.data['poster_image'])
+                    self.data['meta']['extraction_method'] = lbb_data['meta']['extraction_method']
+                    
+                    return True
+                    
+                return False
+            except Exception as e:
+                logger.error(f"Error in specialized LBB extractor: {e}")
+                return False
+
     def _extract_id_from_url(self, url: str) -> Optional[str]:
         """Extract ID from URL like /12345/ or similar patterns"""
         if not url:
