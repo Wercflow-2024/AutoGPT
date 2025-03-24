@@ -370,8 +370,12 @@ Here's the HTML:
         try:
             return extract_json_from_response(response)
         except Exception as e:
-            logger.error(f"❌ Error parsing structure response: {str(e)}")
-            return {"strategy": "unknown", "selectors": {}}
+            logger.error(f"Raw response that failed to parse:\n{response}")
+            return {
+                "strategy": "unknown",
+                "selectors": {},
+                "raw_response": response
+            }
     
     def _generate_placeholder_suggestions(self, missing_elements: List[str]) -> Dict:
         """Generate placeholder suggestions when AI is disabled"""
