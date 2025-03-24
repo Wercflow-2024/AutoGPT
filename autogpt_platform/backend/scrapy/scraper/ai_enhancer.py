@@ -23,8 +23,12 @@ logging.basicConfig(
 logger = logging.getLogger("ai_enhancer")
 
 def extract_json_from_response(text: str) -> dict:
-    """Extract valid JSON from an OpenAI response string"""
+    """Extract valid JSON from an OpenAI response string with improved debugging"""
     import re
+    import json
+    
+    # Log the raw response for debugging
+    logger.debug(f"Raw response from AI: {text[:500]}..." if len(text) > 500 else text)
 
     def clean_json_string(json_str):
         # Remove inline JS-style comments
@@ -38,26 +42,55 @@ def extract_json_from_response(text: str) -> dict:
     # Try full response as-is
     try:
         return json.loads(clean_json_string(text))
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        logger.debug(f"Failed to parse full response: {str(e)}")
 
-    # Try extracting from triple-backtick block
-    match = re.search(r"```(?:json)?\s*({.*?})\s*```", text, re.DOTALL)
+    # Try extracting from triple-backtick code block (common format in AI responses)
+    match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
     if match:
         try:
-            return json.loads(clean_json_string(match.group(1)))
-        except json.JSONDecodeError:
-            pass
+            content = match.group(1).strip()
+            logger.debug(f"Extracted content from code block: {content[:200]}...")
+            return json.loads(clean_json_string(content))
+        except json.JSONDecodeError as e:
+            logger.debug(f"Failed to parse code block content: {str(e)}")
 
-    # Try first {...} block
-    match = re.search(r"({.*})", text, re.DOTALL)
+    # Try to find any JSON-like structure with curly braces
+    match = re.search(r"({[\s\S]*?})", text)
     if match:
         try:
-            return json.loads(clean_json_string(match.group(1)))
-        except json.JSONDecodeError:
-            pass
-
-    raise ValueError("❌ Could not parse AI response as valid JSON")
+            content = match.group(1).strip()
+            logger.debug(f"Extracted content from braces: {content[:200]}...")
+            return json.loads(clean_json_string(content))
+        except json.JSONDecodeError as e:
+            logger.debug(f"Failed to parse braces content: {str(e)}")
+    
+    # If all else fails, create a basic structure with the most common fields
+    logger.warning("Could not parse AI response as valid JSON. Creating a fallback structure.")
+    
+    # Try to extract individual selectors as a last resort
+    selectors = {}
+    selector_matches = re.finditer(r'"([^"]+)":\s*"([^"]+)"', text)
+    for match in selector_matches:
+        key, value = match.groups()
+        if key and value:
+            selectors[key] = value
+    
+    if selectors:
+        logger.info(f"Extracted {len(selectors)} selectors using regex fallback")
+        return {"selectors": selectors}
+    
+    # Force reasonable defaults if all extraction methods fail
+    logger.error(f"All JSON extraction methods failed. Response was: {text[:300]}...")
+    return {
+        "selectors": {
+            "companies": ".credit-entry, .company-block, .team-section", 
+            "title": "h1, .title",
+            "description": ".description, .summary, p.intro",
+            "roles": ".role, .position, .job-title"
+        },
+        "extraction_failed": True
+    }
 
 class AzureOpenAIEnhancer:
     """
@@ -105,6 +138,7 @@ class AzureOpenAIEnhancer:
             html_snippet: The HTML content to analyze
             missing_elements: List of missing element types
             site_url: URL of the page being scraped
+            previous_selectors: Optional dictionary of previously tried selectors
             
         Returns:
             Dictionary with suggested selectors and extraction code
@@ -198,20 +232,24 @@ class AzureOpenAIEnhancer:
             
             # Parse response
             strategy = self._parse_structure_response(response)
-            from backend.scrapy.utils.config import CONFIG, get_next_version
-            import slugify
             
-            domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
-            version = get_next_version(domain, CONFIG["STRATEGIES_DIR"])
-            strategy_path = os.path.join(CONFIG["STRATEGIES_DIR"], domain, f"{version}.json")
-            
+            # Try to save the strategy if CONFIG is available
             try:
-                os.makedirs(os.path.dirname(strategy_path), exist_ok=True)
-                with open(strategy_path, "w") as f:
-                    json.dump(strategy, f, indent=2)
-                logger.info(f"💾 Strategy saved to: {strategy_path}")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to save strategy: {e}")
+                from backend.scrapy.utils.config import CONFIG, get_next_version
+                
+                domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
+                version = get_next_version(domain, CONFIG["STRATEGIES_DIR"], "v")
+                strategy_path = os.path.join(CONFIG["STRATEGIES_DIR"], domain, f"{version}.json")
+                
+                try:
+                    os.makedirs(os.path.dirname(strategy_path), exist_ok=True)
+                    with open(strategy_path, "w") as f:
+                        json.dump(strategy, f, indent=2)
+                    logger.info(f"💾 Strategy saved to: {strategy_path}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to save strategy: {e}")
+            except ImportError:
+                logger.debug("Could not import CONFIG to save strategy")
             
             return strategy
             
@@ -246,8 +284,14 @@ class AzureOpenAIEnhancer:
             raise Exception(f"OpenAI API error: {response.status_code}")
         
         response_data = response.json()
-        logger.debug(f"Raw AI response: {response_data['choices'][0]['message']['content']}")
-        return response_data["choices"][0]["message"]["content"]
+        raw_response = response_data["choices"][0]["message"]["content"]
+        
+        # Optionally save raw response for debugging
+        # with open("raw_ai_response.txt", "w", encoding="utf-8") as f:
+        #     f.write(raw_response)
+        
+        logger.debug(f"Raw AI response: {raw_response[:300]}...")
+        return raw_response
     
     def _create_selector_prompt(self, html: str, missing_elements: List[str], site_url: str, previous_selectors: Optional[Dict[str, str]] = None) -> List[Dict]:
         """Create prompt for selector suggestions"""
@@ -262,13 +306,14 @@ class AzureOpenAIEnhancer:
                 "content": (
                     "You are an expert web scraper and front-end engineer. "
                     "Your job is to find the best CSS selectors to extract elements from a webpage based on its raw HTML. "
-                    "You are especially good at tracing elements based on visible text and structure."
+                    "You are especially good at tracing elements based on visible text and structure. "
+                    "You MUST return a valid JSON object containing the selectors, and nothing else before or after the JSON."
                 )
             },
             {
                 "role": "user",
                 "content": f"""
-I’m scraping this page: {site_url}
+I'm scraping this page: {site_url}
 I already have the HTML below. I'm trying to extract the following missing elements:
 - {', '.join(missing_elements)}
 {prior_context}
@@ -278,7 +323,7 @@ Please scan the HTML, and for each missing element:
 2. Explain why that selector works
 3. List any obvious patterns or fallback selectors
 
-Only return a JSON object with this structure:
+Return ONLY a valid JSON object with this structure, and nothing else before or after:
 {{
   "selectors": {{
     "element_name": "css selector"
@@ -291,7 +336,7 @@ Only return a JSON object with this structure:
   }}
 }}
 
-Here’s the HTML:
+Here's the HTML:
 ```html
 {html}
 ```"""
@@ -310,7 +355,7 @@ Here’s the HTML:
         html_context = f"\nHere's some HTML context:\n```html\n{html_snippet[:5000]}\n```" if html_snippet else ""
         
         return [
-            {"role": "system", "content": "You are an expert in creative industry roles and job titles. Your task is to normalize inconsistent or missing role names to standard industry terms."},
+            {"role": "system", "content": "You are an expert in creative industry roles and job titles. Your task is to normalize inconsistent or missing role names to standard industry terms. You MUST return a valid JSON object with your response."},
             {"role": "user", "content": f"""
 I need to normalize these unknown roles from a creative project/company database:
 {unknown_roles_str}
@@ -321,7 +366,7 @@ For reference, here are some examples of known roles and their IDs:
 
 For each unknown role, determine the most likely standard job title based on the person's name, ID, and any context available.
 
-Return your response as a JSON object with person_id as keys and normalized role names as values:
+Return ONLY a valid JSON object with person_id as keys and normalized role names as values:
 {{
   "person_id1": "Normalized Role",
   "person_id2": "Normalized Role",
@@ -335,7 +380,7 @@ If you can't determine a role, use "Contributor" as the default.
     def _create_structure_prompt(self, html: str, url: str) -> List[Dict]:
         """Create prompt for HTML structure analysis"""
         return [
-            {"role": "system", "content": "You are an expert web scraper who can analyze HTML structure and create accurate extraction strategies. You can identify patterns in HTML and suggest robust CSS selectors for extracting structured data."},
+            {"role": "system", "content": "You are an expert web scraper who can analyze HTML structure and create accurate extraction strategies. You can identify patterns in HTML and suggest robust CSS selectors for extracting structured data. You MUST return a valid JSON object with your response."},
             {"role": "user", "content": f"""
 I need to create a scraping strategy for this page: {url}
 
@@ -346,7 +391,7 @@ Please analyze the HTML structure and create a complete scraping strategy with C
 4. Credit blocks (companies, people, roles)
 5. Media (videos, images)
 
-Return your response as a JSON object with this structure:
+Return ONLY a valid JSON object with this structure, and nothing else before or after:
 {{
   "strategy": "domain_name_v1",
   "selectors": {{
@@ -372,24 +417,37 @@ Here's the HTML:
         ]
     
     def _parse_selector_response(self, response: str, missing_elements: List[str]) -> Dict:
-        """Parse the response for selector suggestions"""
+        """Parse the response for selector suggestions with better error handling"""
         try:
-            # Extract JSON from response
+            # Extract JSON from response using the improved function
             suggestions = extract_json_from_response(response)
             
             # Ensure we have the expected structure
             if "selectors" not in suggestions:
+                logger.warning("No 'selectors' key in AI response, creating it")
                 suggestions["selectors"] = {}
             
             # Make sure we have entries for all missing elements
             for element in missing_elements:
                 if element not in suggestions["selectors"]:
-                    suggestions["selectors"][element] = ""
+                    logger.warning(f"AI did not suggest selector for '{element}', using placeholder")
+                    suggestions["selectors"][element] = self._get_placeholder_selector(element)
+                elif not suggestions["selectors"][element]:
+                    logger.warning(f"AI suggested empty selector for '{element}', using placeholder")
+                    suggestions["selectors"][element] = self._get_placeholder_selector(element)
+            
+            # Always include explanations and alternatives
+            if "explanations" not in suggestions:
+                suggestions["explanations"] = {element: "Generated by AI" for element in suggestions["selectors"]}
+            
+            if "alternatives" not in suggestions:
+                suggestions["alternatives"] = {element: [] for element in suggestions["selectors"]}
             
             return suggestions
-            
+                
         except Exception as e:
             logger.error(f"❌ Error parsing selector response: {str(e)}")
+            logger.error(f"Raw AI response: {response[:500]}...")
             return self._generate_placeholder_suggestions(missing_elements)
     
     def _parse_role_response(self, response: str) -> Dict[str, str]:
@@ -397,7 +455,14 @@ Here's the HTML:
         try:
             # Extract JSON from response
             normalized_roles = extract_json_from_response(response)
-            return normalized_roles
+            
+            # Ensure we have a dictionary of role mappings
+            if not isinstance(normalized_roles, dict):
+                logger.warning("Role normalization did not return a dictionary, creating empty one")
+                return {}
+                
+            # Filter out any non-string values
+            return {k: str(v) for k, v in normalized_roles.items() if v}
             
         except Exception as e:
             logger.error(f"❌ Error parsing role response: {str(e)}")
@@ -406,38 +471,66 @@ Here's the HTML:
     def _parse_structure_response(self, response: str) -> Dict:
         """Parse the response for HTML structure analysis"""
         try:
-            return extract_json_from_response(response)
+            strategy = extract_json_from_response(response)
+            
+            # Ensure we have the basic strategy structure
+            if not isinstance(strategy, dict):
+                logger.warning("Structure analysis did not return a dictionary")
+                strategy = {}
+                
+            if "strategy" not in strategy:
+                strategy["strategy"] = "unknown"
+                
+            if "selectors" not in strategy:
+                strategy["selectors"] = {}
+                
+            # Validate all selectors are strings
+            for key, value in strategy.get("selectors", {}).items():
+                if not isinstance(value, str):
+                    logger.warning(f"Selector '{key}' is not a string, converting")
+                    strategy["selectors"][key] = str(value)
+            
+            return strategy
+            
         except Exception as e:
-            logger.error(f"Raw response that failed to parse:\n{response}")
+            logger.error(f"❌ Error parsing structure response: {str(e)}")
+            logger.error(f"Raw response that failed to parse:\n{response[:500]}...")
             return {
                 "strategy": "unknown",
                 "selectors": {},
-                "raw_response": response
+                "raw_response": response[:1000] if len(response) > 1000 else response
             }
     
-    def _generate_placeholder_suggestions(self, missing_elements: List[str]) -> Dict:
-        """Generate placeholder suggestions when AI is disabled"""
-        suggestions = {
-            "selectors": {},
-            "explanations": {},
-            "alternatives": {}
-        }
-        
-        default_selectors = {
+    def _get_placeholder_selector(self, element: str) -> str:
+        """Get a placeholder selector for a specific element type"""
+        placeholders = {
             "title": "h1, .title, header h2",
             "description": ".description, .content p:first-of-type, article p",
-            "companies": ".company, .credit-company, .partner",
-            "company_credits": ".team, .credit-person, .member",
-            "roles": ".role, .job-title, .position",
-            "media": "iframe[src*=video], .main-image, .hero img"
+            "project_info": ".info, .metadata, .details",
+            "credit_blocks": ".credits, .team, .crew",
+            "companies": ".company, .partner, .credit-company, .credit-entry",
+            "company_credits": ".team-member, .credit-person, .member",
+            "company_name": ".company-name, .partner-name, .credit-company-name",
+            "company_type": ".company-type, .partner-type",
+            "role_blocks": ".role, .job, .position",
+            "role_name": ".role-name, .job-title, .position-name",
+            "person": ".person, .team-member, .credit-person",
+            "person_name": ".person-name, .member-name, a",
+            "media": "iframe[src*=video], .main-image, .hero img",
+            "video_links": "iframe[src*=youtube], iframe[src*=vimeo], video"
         }
+        return placeholders.get(element, f".{element}")
+
+    def _generate_placeholder_suggestions(self, missing_elements: List[str]) -> Dict:
+        """Generate placeholder suggestions when AI is disabled or errors occur"""
+        selectors = {element: self._get_placeholder_selector(element) for element in missing_elements}
         
-        for element in missing_elements:
-            suggestions["selectors"][element] = default_selectors.get(element, ".unknown")
-            suggestions["explanations"][element] = "Placeholder suggestion (AI disabled)"
-            suggestions["alternatives"][element] = [".alt1", ".alt2"]
-        
-        return suggestions
+        return {
+            "selectors": selectors,
+            "explanations": {element: "Placeholder suggestion (AI unavailable)" for element in missing_elements},
+            "alternatives": {element: [] for element in missing_elements},
+            "ai_error": True
+        }
 
 
 # Example usage:
@@ -450,7 +543,21 @@ if __name__ == "__main__":
     
     if enhancer.enabled:
         # Test a simple HTML snippet
-        html = "<div class='project'><h1>Project Title</h1><p class='description'>Description here</p></div>"
-        missing = ["companies", "roles"]
+        html = """
+        <div class='project'>
+          <h1>Test Project</h1>
+          <div class='credit-entry'>
+            <div class='company-name'><a href="/company/123">Test Company</a></div>
+            <div class='company-type'>Production</div>
+            <div class='roles'>
+              <div class='role'>
+                <div class='role-name'>Director</div>
+                <div class='person'><a href="/person/456">Jane Smith</a></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        """
+        missing = ["companies"]
         suggestions = enhancer.suggest_selectors(html, missing, "https://example.com")
         print(json.dumps(suggestions, indent=2))
