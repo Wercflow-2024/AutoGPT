@@ -7,9 +7,11 @@ import os
 import json
 import logging
 import re
-from typing import Dict, List, Optional, Any
 import requests
+from typing import Dict, List, Optional, Any
+import urllib.parse
 from dotenv import load_dotenv
+from bs4 import BeautifulSoup
 
 # Load environment variables
 load_dotenv()
@@ -65,7 +67,7 @@ def extract_json_from_response(text: str) -> dict:
         except json.JSONDecodeError as e:
             logger.debug(f"Failed to parse braces content: {str(e)}")
     
-    # If all else fails, create a basic structure with the most common fields
+    # If all else fails, create a basic structure
     logger.warning("Could not parse AI response as valid JSON. Creating a fallback structure.")
     
     # Try to extract individual selectors as a last resort
@@ -130,16 +132,93 @@ class AzureOpenAIEnhancer:
             self.enabled = True
             logger.info(f"✅ AI enhancer initialized with model: {model}")
     
+    def _validate_css_selector(self, selector: str) -> bool:
+        """
+        Validate a CSS selector for basic correctness
+        
+        Args:
+            selector: CSS selector to validate
+        
+        Returns:
+            Boolean indicating if the selector is valid
+        """
+        if not selector or not isinstance(selector, str):
+            return False
+        
+        # Basic CSS selector validation rules
+        try:
+            # Check for basic syntax
+            if not re.match(r'^[.#]?[a-zA-Z0-9\-_]+(?:\s*[.#][a-zA-Z0-9\-_]+)*(?:\s*>\s*[a-zA-Z0-9\-_]+)?$', selector):
+                return False
+            
+            # Ensure no malicious content
+            if any(char in selector for char in ['<', '>', '&', '"', "'"]):
+                return False
+            
+            return True
+        except Exception:
+            return False
+
+    def _generate_fallback_selectors(self, html_content: str, missing_elements: List[str]) -> Dict:
+        """
+        Generate fallback selectors using multiple heuristics
+        
+        Args:
+            html_content: HTML to analyze
+            missing_elements: List of missing elements to find selectors for
+        
+        Returns:
+            Dictionary of potential selectors
+        """
+        soup = BeautifulSoup(html_content, "html.parser")
+        fallback_selectors = {}
+        
+        # Common selector patterns for different elements
+        selector_patterns = {
+            "companies": [
+                ".company", ".company-name", ".credit-company", 
+                "[class*='company']", "[class*='brand']",
+                "div.flex > span.font-bold", "section.credits > div"
+            ],
+            "credits": [
+                ".credits", ".team", ".crew", ".collaborators",
+                "div.flex.space-y-4", "section.people > div"
+            ],
+            "title": [
+                "h1", ".title", ".page-title", "header h2", 
+                "[class*='title']"
+            ]
+        }
+        
+        for element in missing_elements:
+            # Try patterns for this specific element
+            patterns = selector_patterns.get(element, [])
+            
+            for pattern in patterns:
+                matches = soup.select(pattern)
+                if matches:
+                    fallback_selectors[element] = pattern
+                    break
+            
+            # Fallback to generic selector if no specific pattern works
+            if element not in fallback_selectors:
+                fallback_selectors[element] = f".{element}"
+        
+        return {
+            "selectors": fallback_selectors,
+            "explanations": {k: "Automatically generated fallback selector" for k in fallback_selectors}
+        }
+
     def suggest_selectors(self, html_snippet: str, missing_elements: List[str], site_url: str, previous_selectors: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """
-        Analyze HTML and suggest CSS selectors for missing elements
+        Enhanced method for suggesting selectors with multiple validation layers
         
         Args:
             html_snippet: The HTML content to analyze
             missing_elements: List of missing element types
             site_url: URL of the page being scraped
             previous_selectors: Optional dictionary of previously tried selectors
-            
+        
         Returns:
             Dictionary with suggested selectors and extraction code
         """
@@ -157,25 +236,120 @@ class AzureOpenAIEnhancer:
             # Call Azure OpenAI API
             response = self._call_azure_openai(prompt)
             
-            # Parse response
+            # Parse response with improved JSON extraction
             suggestions = self._parse_selector_response(response, missing_elements)
-            logger.info(f"✅ AI suggestions generated for: {', '.join(missing_elements)}")
             
-            # Check if new selectors differ from previous selectors
-            if previous_selectors is not None:
-                prev = previous_selectors if isinstance(previous_selectors, dict) else {}
-                new = suggestions.get("selectors", {})
-                if new != prev:
-                    logger.info("New selectors differ from previous selectors.")
-                else:
-                    logger.info("AI suggestions did not change from previous selectors.")
-                    
+            # Validate and clean selectors
+            final_suggestions = {}
+            for element, selector in suggestions.get("selectors", {}).items():
+                if self._validate_css_selector(selector):
+                    final_suggestions[element] = selector
+            
+            # If no valid selectors, use fallback method
+            if not final_suggestions:
+                logger.warning("No valid AI-suggested selectors. Using fallback method.")
+                fallback = self._generate_fallback_selectors(html_preview, missing_elements)
+                final_suggestions = fallback.get("selectors", {})
+            
+            # Update suggestions with validated/fallback selectors
+            suggestions["selectors"] = final_suggestions
+            
+            logger.info(f"✅ AI suggestions generated for: {', '.join(missing_elements)}")
             return suggestions
             
         except Exception as e:
             logger.error(f"❌ Error generating AI suggestions: {str(e)}")
-            return self._generate_placeholder_suggestions(missing_elements)
-    
+            
+            # Use fallback method on complete failure
+            fallback = self._generate_fallback_selectors(html_preview, missing_elements)
+            return fallback
+
+    def _create_selector_prompt(self, html: str, missing_elements: List[str], site_url: str, previous_selectors: Optional[Dict[str, str]] = None) -> List[Dict]:
+        """Create prompt for selector suggestions"""
+        prior_context = ""
+        if previous_selectors:
+            formatted = json.dumps(previous_selectors, indent=2)
+            prior_context = f"\nPreviously attempted selectors:\n```json\n{formatted}\n```"
+
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert web scraper and front-end engineer specializing in extracting structured data from HTML. "
+                    "Your primary task is to generate VALID CSS SELECTORS for specific page elements."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"""
+I need to extract the following elements from this page: {', '.join(missing_elements)}
+URL: {site_url}
+{prior_context}
+
+STRICT REQUIREMENTS FOR YOUR RESPONSE:
+1. Provide ONLY a valid JSON object
+2. Each missing element MUST have a VALID CSS SELECTOR
+3. CSS Selectors must:
+   - Start with a valid tag or class/ID selector
+   - Use only standard CSS selector syntax
+   - Be as precise as possible
+   - Prefer combining multiple attributes/classes for accuracy
+
+RESPONSE FORMAT (CRITICAL):
+```json
+{{
+  "selectors": {{
+    "element_name": "precise.css.selector",
+    "another_element": "another.precise.selector"
+  }},
+  "explanations": {{
+    "element_name": "Why this selector works",
+    "another_element": "Explanation for this selector"
+  }}
+}}
+```
+
+IMPORTANT: Do NOT include descriptive text outside the JSON. The JSON MUST be the ONLY content in your response.
+
+HTML to analyze:
+```html
+{html[:20000]}
+```"""
+            }
+        ]
+
+    def _call_azure_openai(self, prompt: List[Dict]) -> str:
+        """Call Azure OpenAI API and return the response text"""
+        headers = {
+            "Content-Type": "application/json",
+            "api-key": self.api_key
+        }
+        
+        payload = {
+            "messages": prompt,
+            "temperature": 0.2,
+            "max_tokens": 4000,
+            "top_p": 0.9,
+            "stream": False
+        }
+        
+        response = requests.post(
+            self.endpoint,
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"❌ OpenAI API error: {response.status_code} - {response.text}")
+            raise Exception(f"OpenAI API error: {response.status_code}")
+        
+        response_data = response.json()
+        raw_response = response_data["choices"][0]["message"]["content"]
+        
+        logger.debug(f"Raw AI response: {raw_response[:300]}...")
+        return raw_response
+
     def normalize_roles(self, unknown_roles: List[Dict], known_roles: Dict, html_snippet: str = "") -> Dict[str, str]:
         """
         Normalize unknown roles using AI
@@ -205,7 +379,59 @@ class AzureOpenAIEnhancer:
         except Exception as e:
             logger.error(f"❌ Error normalizing roles: {str(e)}")
             return {}
-    
+
+    def _create_role_prompt(self, unknown_roles: List[Dict], known_roles: Dict, html_snippet: str) -> List[Dict]:
+        """Create prompt for role normalization"""
+        # Format the unknown roles
+        unknown_roles_str = json.dumps(unknown_roles, indent=2)
+        
+        # Format a sample of known roles (max 20)
+        known_roles_sample = {k: v for i, (k, v) in enumerate(known_roles.items()) if i < 20}
+        known_roles_str = json.dumps(known_roles_sample, indent=2)
+        
+        html_context = f"\nHere's some HTML context:\n```html\n{html_snippet[:5000]}\n```" if html_snippet else ""
+        
+        return [
+            {"role": "system", "content": "You are an expert in creative industry roles and job titles. Your task is to normalize inconsistent or missing role names to standard industry terms. You MUST return a valid JSON object with your response."},
+            {"role": "user", "content": f"""
+I need to normalize these unknown roles from a creative project/company database:
+{unknown_roles_str}
+
+For reference, here are some examples of known roles and their IDs:
+{known_roles_str}
+{html_context}
+
+For each unknown role, determine the most likely standard job title based on the person's name, ID, and any context available.
+
+Return ONLY a valid JSON object with person_id as keys and normalized role names as values:
+{{
+  "person_id1": "Normalized Role",
+  "person_id2": "Normalized Role",
+  ...
+}}
+
+If you can't determine a role, use "Contributor" as the default.
+"""}
+        ]
+
+    def _parse_role_response(self, response: str) -> Dict[str, str]:
+        """Parse the response for role normalization"""
+        try:
+            # Extract JSON from response
+            normalized_roles = extract_json_from_response(response)
+            
+            # Ensure we have a dictionary of role mappings
+            if not isinstance(normalized_roles, dict):
+                logger.warning("Role normalization did not return a dictionary, creating empty one")
+                return {}
+                
+            # Filter out any non-string values
+            return {k: str(v) for k, v in normalized_roles.items() if v}
+            
+        except Exception as e:
+            logger.error(f"❌ Error parsing role response: {str(e)}")
+            return {}
+
     def analyze_html_structure(self, html: str, url: str) -> Dict[str, Any]:
         """
         Analyze HTML structure and suggest a complete scraping strategy
@@ -256,127 +482,7 @@ class AzureOpenAIEnhancer:
         except Exception as e:
             logger.error(f"❌ Error analyzing HTML structure: {str(e)}")
             return {"strategy": "unknown", "selectors": {}}
-    
-    def _call_azure_openai(self, prompt: List[Dict]) -> str:
-        """Call Azure OpenAI API and return the response text"""
-        headers = {
-            "Content-Type": "application/json",
-            "api-key": self.api_key
-        }
-        
-        payload = {
-            "messages": prompt,
-            "temperature": 0.2,
-            "max_tokens": 4000,
-            "top_p": 0.9,
-            "stream": False
-        }
-        
-        response = requests.post(
-            self.endpoint,
-            headers=headers,
-            json=payload,
-            timeout=60
-        )
-        
-        if response.status_code != 200:
-            logger.error(f"❌ OpenAI API error: {response.status_code} - {response.text}")
-            raise Exception(f"OpenAI API error: {response.status_code}")
-        
-        response_data = response.json()
-        raw_response = response_data["choices"][0]["message"]["content"]
-        
-        # Optionally save raw response for debugging
-        # with open("raw_ai_response.txt", "w", encoding="utf-8") as f:
-        #     f.write(raw_response)
-        
-        logger.debug(f"Raw AI response: {raw_response[:300]}...")
-        return raw_response
-    
-    def _create_selector_prompt(self, html: str, missing_elements: List[str], site_url: str, previous_selectors: Optional[Dict[str, str]] = None) -> List[Dict]:
-        """Create prompt for selector suggestions"""
-        prior_context = ""
-        if previous_selectors:
-            formatted = json.dumps(previous_selectors, indent=2)
-            prior_context = f"\nPreviously attempted selectors:\n```json\n{formatted}\n```"
 
-        return [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert web scraper and front-end engineer. "
-                    "Your job is to find the best CSS selectors to extract elements from a webpage based on its raw HTML. "
-                    "You are especially good at tracing elements based on visible text and structure. "
-                    "You MUST return a valid JSON object containing the selectors, and nothing else before or after the JSON."
-                )
-            },
-            {
-                "role": "user",
-                "content": f"""
-I'm scraping this page: {site_url}
-I already have the HTML below. I'm trying to extract the following missing elements:
-- {', '.join(missing_elements)}
-{prior_context}
-
-Please scan the HTML, and for each missing element:
-1. Suggest a **precise CSS selector** that targets that data
-2. Explain why that selector works
-3. List any obvious patterns or fallback selectors
-
-Return ONLY a valid JSON object with this structure, and nothing else before or after:
-{{
-  "selectors": {{
-    "element_name": "css selector"
-  }},
-  "explanations": {{
-    "element_name": "explanation"
-  }},
-  "alternatives": {{
-    "element_name": ["alt1", "alt2"]
-  }}
-}}
-
-Here's the HTML:
-```html
-{html}
-```"""
-            }
-        ]
-    
-    def _create_role_prompt(self, unknown_roles: List[Dict], known_roles: Dict, html_snippet: str) -> List[Dict]:
-        """Create prompt for role normalization"""
-        # Format the unknown roles
-        unknown_roles_str = json.dumps(unknown_roles, indent=2)
-        
-        # Format a sample of known roles (max 20)
-        known_roles_sample = {k: v for i, (k, v) in enumerate(known_roles.items()) if i < 20}
-        known_roles_str = json.dumps(known_roles_sample, indent=2)
-        
-        html_context = f"\nHere's some HTML context:\n```html\n{html_snippet[:5000]}\n```" if html_snippet else ""
-        
-        return [
-            {"role": "system", "content": "You are an expert in creative industry roles and job titles. Your task is to normalize inconsistent or missing role names to standard industry terms. You MUST return a valid JSON object with your response."},
-            {"role": "user", "content": f"""
-I need to normalize these unknown roles from a creative project/company database:
-{unknown_roles_str}
-
-For reference, here are some examples of known roles and their IDs:
-{known_roles_str}
-{html_context}
-
-For each unknown role, determine the most likely standard job title based on the person's name, ID, and any context available.
-
-Return ONLY a valid JSON object with person_id as keys and normalized role names as values:
-{{
-  "person_id1": "Normalized Role",
-  "person_id2": "Normalized Role",
-  ...
-}}
-
-If you can't determine a role, use "Contributor" as the default.
-"""}
-        ]
-    
     def _create_structure_prompt(self, html: str, url: str) -> List[Dict]:
         """Create prompt for HTML structure analysis"""
         return [
@@ -415,59 +521,7 @@ Here's the HTML:
 ```
 """}
         ]
-    
-    def _parse_selector_response(self, response: str, missing_elements: List[str]) -> Dict:
-        """Parse the response for selector suggestions with better error handling"""
-        try:
-            # Extract JSON from response using the improved function
-            suggestions = extract_json_from_response(response)
-            
-            # Ensure we have the expected structure
-            if "selectors" not in suggestions:
-                logger.warning("No 'selectors' key in AI response, creating it")
-                suggestions["selectors"] = {}
-            
-            # Make sure we have entries for all missing elements
-            for element in missing_elements:
-                if element not in suggestions["selectors"]:
-                    logger.warning(f"AI did not suggest selector for '{element}', using placeholder")
-                    suggestions["selectors"][element] = self._get_placeholder_selector(element)
-                elif not suggestions["selectors"][element]:
-                    logger.warning(f"AI suggested empty selector for '{element}', using placeholder")
-                    suggestions["selectors"][element] = self._get_placeholder_selector(element)
-            
-            # Always include explanations and alternatives
-            if "explanations" not in suggestions:
-                suggestions["explanations"] = {element: "Generated by AI" for element in suggestions["selectors"]}
-            
-            if "alternatives" not in suggestions:
-                suggestions["alternatives"] = {element: [] for element in suggestions["selectors"]}
-            
-            return suggestions
-                
-        except Exception as e:
-            logger.error(f"❌ Error parsing selector response: {str(e)}")
-            logger.error(f"Raw AI response: {response[:500]}...")
-            return self._generate_placeholder_suggestions(missing_elements)
-    
-    def _parse_role_response(self, response: str) -> Dict[str, str]:
-        """Parse the response for role normalization"""
-        try:
-            # Extract JSON from response
-            normalized_roles = extract_json_from_response(response)
-            
-            # Ensure we have a dictionary of role mappings
-            if not isinstance(normalized_roles, dict):
-                logger.warning("Role normalization did not return a dictionary, creating empty one")
-                return {}
-                
-            # Filter out any non-string values
-            return {k: str(v) for k, v in normalized_roles.items() if v}
-            
-        except Exception as e:
-            logger.error(f"❌ Error parsing role response: {str(e)}")
-            return {}
-    
+
     def _parse_structure_response(self, response: str) -> Dict:
         """Parse the response for HTML structure analysis"""
         try:
@@ -500,7 +554,18 @@ Here's the HTML:
                 "selectors": {},
                 "raw_response": response[:1000] if len(response) > 1000 else response
             }
-    
+
+    def _generate_placeholder_suggestions(self, missing_elements: List[str]) -> Dict:
+        """Generate placeholder suggestions when AI is disabled or errors occur"""
+        selectors = {element: self._get_placeholder_selector(element) for element in missing_elements}
+        
+        return {
+            "selectors": selectors,
+            "explanations": {element: "Placeholder suggestion (AI unavailable)" for element in missing_elements},
+            "alternatives": {element: [] for element in missing_elements},
+            "ai_error": True
+        }
+
     def _get_placeholder_selector(self, element: str) -> str:
         """Get a placeholder selector for a specific element type"""
         placeholders = {
@@ -520,18 +585,6 @@ Here's the HTML:
             "video_links": "iframe[src*=youtube], iframe[src*=vimeo], video"
         }
         return placeholders.get(element, f".{element}")
-
-    def _generate_placeholder_suggestions(self, missing_elements: List[str]) -> Dict:
-        """Generate placeholder suggestions when AI is disabled or errors occur"""
-        selectors = {element: self._get_placeholder_selector(element) for element in missing_elements}
-        
-        return {
-            "selectors": selectors,
-            "explanations": {element: "Placeholder suggestion (AI unavailable)" for element in missing_elements},
-            "alternatives": {element: [] for element in missing_elements},
-            "ai_error": True
-        }
-
 
 # Example usage:
 if __name__ == "__main__":
