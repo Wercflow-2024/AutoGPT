@@ -188,6 +188,21 @@ class AzureOpenAIEnhancer:
             
             # Parse response
             strategy = self._parse_structure_response(response)
+            from backend.scrapy.utils.config import CONFIG, get_next_version
+            import slugify
+            
+            domain = re.sub(r"https?://(www\.)?", "", url).split("/")[0]
+            version = get_next_version(domain, CONFIG["STRATEGIES_DIR"])
+            strategy_path = os.path.join(CONFIG["STRATEGIES_DIR"], domain, f"{version}.json")
+            
+            try:
+                os.makedirs(os.path.dirname(strategy_path), exist_ok=True)
+                with open(strategy_path, "w") as f:
+                    json.dump(strategy, f, indent=2)
+                logger.info(f"💾 Strategy saved to: {strategy_path}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to save strategy: {e}")
+            
             return strategy
             
         except Exception as e:
