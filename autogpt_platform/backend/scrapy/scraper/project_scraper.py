@@ -30,6 +30,8 @@ load_dotenv()
 try:
     from backend.scrapy.utils.config import CONFIG
     from backend.scrapy.utils.testing import save_html_snapshot, save_test_result
+    from backend.scrapy.scraper.adaptive_extractor import extract_project_adaptive, scrape_project_adaptive
+
 except ImportError:
     # For standalone testing
     import sys
@@ -670,11 +672,11 @@ def normalize_roles_with_ai(data: Dict, html: str) -> Dict:
 
 def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: bool = False, 
                   ai_enabled: bool = None, ai_model: Optional[str] = None,
-                  normalize_roles: bool = False, strategy_file: Optional[str] = None,
+                  normalize_roles: bool = False, strategy_file: Optional[str] = None, 
                   strategy_name: Optional[str] = None) -> Dict:
     """
-    Main function to scrape a project page with retries and AI-enhancement.
-
+    Main function to scrape a project page.
+    
     Args:
         url: URL of the project page
         fallback_mapping: Optional mapping for role/company normalization
@@ -684,186 +686,20 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
         normalize_roles: Use AI to normalize unknown roles
         strategy_file: Path to a JSON file containing a custom strategy
         strategy_name: Name of a strategy (domain/version) to use
-
+        
     Returns:
         Dictionary with project data
     """
-    # Override config settings if specified
-    if ai_enabled is not None:
-        CONFIG["AI_ENABLED"] = ai_enabled
-
-    if ai_model:
-        CONFIG["AI_MODEL"] = ai_model
-
-    # Load fallback mapping if not provided
-    if fallback_mapping is None:
-        try:
-            fallback_path = os.path.join(os.path.dirname(__file__), "fallback_mapping.json")
-            with open(fallback_path, "r", encoding="utf-8") as f:
-                fallback_mapping = json.load(f)
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to load fallback mapping: {e}")
-            fallback_mapping = {"company_types": {}, "role_mappings": {}}
-
-    # Step 1: Fetch HTML and save snapshot
-    try:
-        html, from_cache = fetch_html_and_snapshot(url, force_refresh=CONFIG["FORCE_REFRESH"])
-    except Exception as e:
-        logger.error(f"❌ Failed to fetch page: {e}")
-        return {}
-
-    # Step 2: Load strategy or select automatically
-    strategy = None
-
-    # First priority: Specific strategy file
-    if strategy_file:
-        try:
-            logger.info(f"📊 Loading custom strategy from file: {strategy_file}")
-            with open(strategy_file, "r", encoding="utf-8") as f:
-                strategy = json.load(f)
-
-            # Validate the strategy structure
-            if not isinstance(strategy, dict):
-                raise ValueError("Strategy must be a dictionary")
-
-            if "selectors" not in strategy:
-                raise ValueError("Strategy must contain a 'selectors' key")
-
-            # Ensure all selector values are strings, not nested dictionaries
-            for key, value in strategy.get("selectors", {}).items():
-                if not isinstance(value, str):
-                    logger.warning(f"⚠️ Selector '{key}' is not a string, converting to string representation")
-                    strategy["selectors"][key] = str(value)
-
-            logger.info(f"✅ Custom strategy loaded from file: {strategy.get('name', 'unknown')}")
-        except Exception as e:
-            logger.error(f"❌ Failed to load strategy file: {e}")
-            strategy = None  # Will fall back to automatic selection
-
-    # Second priority: Named strategy from structured directory
-    if not strategy and strategy_name:
-        try:
-            # Extract domain and version from strategy name
-            if "/" in strategy_name:
-                domain, version = strategy_name.split("/", 1)
-            else:
-                # If only domain provided, use the latest version
-                domain = strategy_name
-                version = None
-
-            # Find the strategy file
-            strategy_dir = os.path.join(CONFIG["STRATEGIES_DIR"], domain)
-            if not os.path.exists(strategy_dir):
-                raise FileNotFoundError(f"Strategy directory not found: {strategy_dir}")
-
-            if version:
-                # Look for specific version
-                strategy_files = [f for f in os.listdir(strategy_dir) if f.startswith(version)]
-                if not strategy_files:
-                    raise FileNotFoundError(f"No strategy file found for version {version} in {domain}")
-                strategy_file = os.path.join(strategy_dir, strategy_files[0])
-            else:
-                # Find the latest version
-                strategy_files = sorted(os.listdir(strategy_dir))
-                if not strategy_files:
-                    raise FileNotFoundError(f"No strategy files found in {domain}")
-                strategy_file = os.path.join(strategy_dir, strategy_files[-1])
-
-            logger.info(f"📊 Loading strategy from: {strategy_file}")
-            with open(strategy_file, "r", encoding="utf-8") as f:
-                strategy = json.load(f)
-
-            # Validate and fix selectors
-            if "selectors" in strategy:
-                for key, value in strategy.get("selectors", {}).items():
-                    if not isinstance(value, str):
-                        strategy["selectors"][key] = str(value)
-
-            logger.info(f"✅ Strategy loaded: {strategy.get('name', 'unknown')}")
-        except Exception as e:
-            logger.error(f"❌ Failed to load named strategy: {e}")
-            strategy = None  # Will fall back to automatic selection
-
-    # Final fallback: Automatic strategy selection
-    if not strategy:
-        strategy = select_strategy(html, url)
-        logger.info(f"📊 Using auto-selected strategy: {strategy.get('name', 'unknown')}")
-
-    # Step 3: Extract data using strategy
-    data = extract_project_data(html, strategy, url, fallback_mapping)
-
-    # Step 4: Validate extracted data
-    missing_elements = validate_scraped_data(data)
-
-    # Step 5: If validation failed and AI is enabled, attempt AI-powered fix with retries
-    if missing_elements and CONFIG["AI_ENABLED"]:
-        retry_attempts = 0
-        max_retries = 10
-        all_suggestions = {}
-
-        while missing_elements and CONFIG["AI_ENABLED"] and retry_attempts < max_retries:
-            snapshot_path = os.path.join(SNAPSHOT_DIR, f"{urlparse(url).netloc.replace('www.', '')}_{hashlib.md5(url.encode()).hexdigest()[:10]}.html")
-            fix_suggestions = suggest_fixes_via_openai(html, url, missing_elements, snapshot_path, previous_selectors=all_suggestions)
-            new_selectors = fix_suggestions.get("suggestions", {})
-            if not new_selectors:
-                logger.warning("⚠️ No new selectors provided by AI. Breaking retry loop.")
-                break
-            all_suggestions.update(new_selectors)
-
-            updated_strategy = {
-                "name": strategy.get("name", "ai_retry"),
-                "selectors": {**strategy.get("selectors", {}), **all_suggestions}
-            }
-
-            logger.info(f"🔁 Retry attempt {retry_attempts + 1} with AI-enhanced strategy: {updated_strategy['name']}")
-            data = extract_project_data(html, updated_strategy, url, fallback_mapping)
-            missing_elements = validate_scraped_data(data)
-
-            data["meta"].update({
-                "strategy_used": updated_strategy["name"],
-                "ai_retry": True,
-                "retry_attempts": retry_attempts + 1,
-                "missing_elements_after_retry": missing_elements,
-                "ai_suggestions": all_suggestions,
-                "snapshot_analyzed": fix_suggestions.get("snapshot_analyzed"),
-            })
-
-            retry_attempts += 1
-
-            if not missing_elements:
-                break
-    elif missing_elements:
-        # AI is disabled but we still record missing elements
-        data["meta"]["missing_elements"] = missing_elements
-        data["meta"]["credits_enriched"] = False
-    else:
-        data["meta"]["credits_enriched"] = True
-        # Save successful AI-enhanced strategy for future use
-        try:
-            if all_suggestions:
-                domain = urlparse(url).netloc.replace("www.", "").split(".")[0]
-                from backend.scrapy.utils.config import get_next_version
-                strategy_version = get_next_version(domain, CONFIG["STRATEGIES_DIR"], "v")
-                strategy_path = os.path.join(CONFIG["STRATEGIES_DIR"], domain, f"{strategy_version}.json")
-                os.makedirs(os.path.dirname(strategy_path), exist_ok=True)
-                with open(strategy_path, "w", encoding="utf-8") as f:
-                    json.dump(updated_strategy, f, indent=2)
-                logger.info(f"🧠 Saved new AI-enhanced strategy to: {strategy_path}")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to save AI strategy: {e}")
-
-    # Normalize roles with AI if requested
-    if normalize_roles and CONFIG["AI_ENABLED"]:
-        data = normalize_roles_with_ai(data, html)
-
-    # Record which strategy was used
-    data["meta"]["strategy_used"] = strategy.get("name", "unknown")
-
-    # Step 6: Return the structured data
-    if debug:
-        logger.info(json.dumps(data, indent=2))
-
-    return data
+    # Use the adaptive extractor by default
+    return scrape_project_adaptive(
+        url=url,
+        fallback_mapping=fallback_mapping,
+        debug=debug,
+        ai_enabled=ai_enabled,
+        ai_model=ai_model,
+        normalize_roles=normalize_roles,
+        strategy_file=strategy_file
+    )
 
 if __name__ == "__main__":
     
