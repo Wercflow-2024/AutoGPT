@@ -353,7 +353,7 @@ def validate_scraped_data(data: Dict) -> List[str]:
     
     return missing
 
-def suggest_fixes_via_openai(html: str, url: str, missing: List[str], snapshot_path: str) -> Dict:
+def suggest_fixes_via_openai(html: str, url: str, missing: List[str], snapshot_path: str, previous_selectors: Optional[Dict] = None) -> Dict:
     """
     Use Azure OpenAI to suggest fixes for missing data.
     
