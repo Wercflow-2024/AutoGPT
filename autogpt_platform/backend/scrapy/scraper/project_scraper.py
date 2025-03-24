@@ -181,6 +181,24 @@ def select_strategy(html: str, url: str) -> Dict:
     logger.warning(f"⚠️ No specific strategy detected for {domain}, using fallback")
     return STRATEGIES["lbb_v1"]
 
+def _generate_placeholder_suggestions(missing: List[str], snapshot_path: str) -> Dict:
+    """Generate fallback suggestions when AI is not available"""
+    suggestions = {
+        "title": "h1, .page-title, header h2",
+        "companies": ".credits, .partners, .collaborators",
+        "company_credits": ".team-member, .credit-person, .collaborator",
+        "roles": "[data-role], .job-title, .position",
+        "media": "iframe[src*=vimeo], iframe[src*=youtube], .thumbnail img"
+    }
+    
+    return {
+        "suggestions": {key: suggestions.get(key, "") for key in missing},
+        "explanations": {key: "Fallback suggestion (AI unavailable)" for key in missing},
+        "alternatives": {key: [] for key in missing},
+        "custom_extraction_code": None,
+        "snapshot_analyzed": snapshot_path
+    }
+
 def extract_project_data(html: str, strategy: Dict, url: str, fallback_mapping: Dict) -> Dict:
     """
     Extract project data using the selected strategy.
@@ -353,7 +371,7 @@ def validate_scraped_data(data: Dict) -> List[str]:
     
     return missing
 
-def suggest_fixes_via_openai(html: str, url: str, missing: List[str], snapshot_path: str) -> Dict:
+def suggest_fixes_via_openai(html: str, url: str, missing: List[str], snapshot_path: str, previous_selectors: Optional[Dict[str, str]] = None) -> Dict:
     """
     Use Azure OpenAI to suggest fixes for missing data.
     
@@ -362,6 +380,7 @@ def suggest_fixes_via_openai(html: str, url: str, missing: List[str], snapshot_p
         url: The URL of the page
         missing: List of missing elements
         snapshot_path: Path to the HTML snapshot
+        previous_selectors: Optional dictionary of previously tried selectors
         
     Returns:
         Dictionary with suggested fixes
@@ -382,8 +401,8 @@ def suggest_fixes_via_openai(html: str, url: str, missing: List[str], snapshot_p
         
         logger.info(f"🤖 Calling Azure OpenAI to fix: {', '.join(missing)}")
         
-        # Get AI-suggested selectors
-        suggestions = enhancer.suggest_selectors(html, missing, url)
+        # Get AI-suggested selectors, passing any previous selectors
+        suggestions = enhancer.suggest_selectors(html, missing, url, previous_selectors)
         
         # Format the response
         result = {
@@ -400,24 +419,6 @@ def suggest_fixes_via_openai(html: str, url: str, missing: List[str], snapshot_p
     except Exception as e:
         logger.error(f"❌ Error using AI enhancer: {str(e)}")
         return _generate_placeholder_suggestions(missing, snapshot_path)
-
-def _generate_placeholder_suggestions(missing: List[str], snapshot_path: str) -> Dict:
-    """Generate fallback suggestions when AI is not available"""
-    suggestions = {
-        "title": "h1, .page-title, header h2",
-        "companies": ".credits, .partners, .collaborators",
-        "company_credits": ".team-member, .credit-person, .collaborator",
-        "roles": "[data-role], .job-title, .position",
-        "media": "iframe[src*=vimeo], iframe[src*=youtube], .thumbnail img"
-    }
-    
-    return {
-        "suggestions": {key: suggestions.get(key, "") for key in missing},
-        "explanations": {key: "Fallback suggestion (AI unavailable)" for key in missing},
-        "alternatives": {key: [] for key in missing},
-        "custom_extraction_code": None,
-        "snapshot_analyzed": snapshot_path
-    }
 
 def normalize_roles_with_ai(data: Dict, html: str) -> Dict:
     """
