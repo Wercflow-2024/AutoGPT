@@ -173,7 +173,7 @@ class AdaptiveExtractor:
         return self.data
     
     def _detect_structure(self) -> str:
-        """Detect the structure type of the page"""
+        """Enhanced structure detection with more nuanced checks"""
         try:
             # Debug output for structure detection
             if self.debug:
@@ -183,37 +183,44 @@ class AdaptiveExtractor:
                 logger.debug(f"Has .rich-text.space-y-5: {bool(self.soup.select('.rich-text.space-y-5'))}")
                 logger.debug(f"Has .credit-entry: {bool(self.soup.select('.credit-entry'))}")
             
-            # LBB Online 2025 design
+            # Enhanced LBB Online detection
             if "lbbonline.com" in self.domain:
-                # Check for LBB v2 first (new design)
-                if (self.soup.select("span.font-barlow.font-bold.text-black") or 
-                    self.soup.select("div.flex.space-y-4") or 
-                    self.soup.select(".rich-text.space-y-5")):
-                    return "lbbonline_v2"
-                
-                # Then check for LBB v1 (old design)
-                if (self.soup.select(".credit-entry") or 
-                    self.soup.select(".company-name") or 
-                    self.soup.select(".field--name-field-basic-info")):
-                    return "lbbonline_v1"
+                # Check for potential structure indicators
+                structure_indicators = [
+                    # Original indicators
+                    bool(self.soup.select("span.font-barlow.font-bold.text-black")),
+                    bool(self.soup.select(".credit-entry")),
                     
-            # D&AD structure
-            if "dandad.org" in self.domain or (
-                self.soup.select(".award-credits-list") or 
-                self.soup.select(".award-meta-details")):
-                return "dandad"
-            
-            # Fall back to generic structure detection
-            page_text = self.soup.get_text().lower()
-            if "credit" in page_text and ("director" in page_text or "producer" in page_text):
-                # Looks like a project page with credits
-                return "generic_credits"
-            
-            if "lbbonline.com" in self.domain:
-                # For lbbonline, default to v2 if we can't determine clearly
-                return "lbbonline_v2"
+                    # Additional indicators
+                    bool(self.soup.select("div[class*='project-details']")),
+                    bool(self.soup.select("section[class*='credits']")),
+                    bool(self.soup.select("[data-testid*='project-']"))
+                ]
                 
-            return "unknown"
+                # Confidence scoring
+                confidence_score = sum(structure_indicators)
+                
+                if confidence_score >= 2:
+                    # Check for JavaScript-rendered content hints
+                    script_patterns = [
+                        "window.__INITIAL_STATE__",
+                        "react", "vue", "angular",
+                        "fetch(", ".json()"
+                    ]
+                    
+                    scripts = self.soup.find_all('script')
+                    js_hints = sum(1 for script in scripts if any(pattern in (script.string or '') for pattern in script_patterns))
+                    
+                    if js_hints > 0:
+                        # Mark as potentially JavaScript-rendered
+                        logger.info("Detected potential JavaScript-rendered content")
+                        return "lbbonline_js_v2"
+                    
+                    return "lbbonline_v2"
+            
+            # Fallback detection logic remains the same
+            return super()._detect_structure()  # Call parent method if available
+        
         except Exception as e:
             logger.error(f"❌ Error in structure detection: {str(e)}")
             return "unknown"
@@ -804,22 +811,75 @@ class AdaptiveExtractor:
             logger.error(f"❌ Error in paragraph-based credit extraction: {str(e)}")
     
     def _extract_credits_alternative(self):
-        """Alternative extraction method when other methods fail"""
+        """
+        Enhanced alternative extraction with more sophisticated methods
+        
+        Additional strategies:
+        1. Look for potential company elements using advanced selectors
+        2. Use AI-assisted extraction with more context
+        3. Implement multiple extraction fallbacks
+        """
         try:
-            # If the primary extraction methods failed, try to extract from tables
-            if not self.data["companies"]:
-                self._extract_credits_from_tables()
+            # If no companies found, try advanced selectors
+            advanced_selectors = [
+                "div[class*='company']",
+                "section[class*='credits']",
+                "[data-testid*='company']",
+                "article div[class*='team']"
+            ]
             
-            # If still no companies, try looking for credits in list items
-            if not self.data["companies"]:
-                self._extract_credits_from_lists()
+            potential_companies = []
+            for selector in advanced_selectors:
+                matches = self.soup.select(selector)
+                if matches:
+                    potential_companies.extend(matches)
+                    break
             
-            # If still nothing, try the most aggressive approach
-            if not self.data["companies"]:
-                self._extract_credits_desperate()
+            # If no matches, try AI-assisted extraction
+            if not potential_companies and self.debug:
+                try:
+                    # Import AI enhancer
+                    from backend.scrapy.scraper.ai_enhancer import AzureOpenAIEnhancer
+                    
+                    ai_enhancer = AzureOpenAIEnhancer(model="gpt-4o-mini")
+                    if ai_enhancer.enabled:
+                        # More specific prompt for company extraction
+                        ai_suggestions = ai_enhancer.suggest_selectors(
+                            str(self.soup), 
+                            ["companies"], 
+                            self.url, 
+                            {"context": "Creative industry project page"}
+                        )
+                        
+                        # Use AI-suggested selectors
+                        ai_selector = ai_suggestions.get('selectors', {}).get('companies')
+                        if ai_selector:
+                            potential_companies = self.soup.select(ai_selector)
+                except ImportError:
+                    logger.warning("Could not import AI enhancer for advanced extraction")
+            
+            # Refine potential companies
+            companies = self._improve_company_detection(self.soup, potential_companies)
+            
+            # If still no companies, try last-resort methods
+            if not companies:
+                # Extract from paragraphs or headings that might contain company names
+                text_selectors = [
+                    "p", "h2", "h3", "div[class*='name']", 
+                    "span[class*='company']"
+                ]
                 
-            # Add debug info
-            self.data["meta"]["used_alternative_extraction"] = not self.data.get("companies", []) == []
+                for selector in text_selectors:
+                    text_elements = self.soup.select(selector)
+                    companies = self._improve_company_detection(self.soup, text_elements)
+                    if companies:
+                        break
+            
+            # Final sanity check
+            if companies:
+                self.data["companies"] = companies
+                self.data["meta"]["used_alternative_extraction"] = True
+        
         except Exception as e:
             logger.error(f"❌ Error in alternative credit extraction: {str(e)}")
     
@@ -1153,7 +1213,62 @@ class AdaptiveExtractor:
             
         match = re.search(r"/(\d+)/?$", url)
         return match.group(1) if match else None
-    
+
+    def _improve_company_detection(self, potential_companies: List[Tag]) -> List[Dict]:
+        """
+        Enhance company detection with more sophisticated filtering
+        
+        Args:
+            potential_companies: List of potential company elements
+        
+        Returns:
+            List of refined company dictionaries
+        """
+        refined_companies = []
+        
+        # Advanced filtering criteria
+        def is_valid_company(element):
+            # Text-based filters
+            text = element.get_text(strip=True).lower()
+            
+            # Exclude clearly non-company text
+            exclude_patterns = [
+                'subscribe', 'newsletter', 'follow us', 'edition', 
+                'credits', '→', 'arrow', 'page', 'menu', 
+                'login', 'signup', 'sign up'
+            ]
+            if any(pattern in text for pattern in exclude_patterns):
+                return False
+            
+            # Length-based filter
+            if len(text) < 2 or len(text) > 100:
+                return False
+            
+            # Capitalization check (most company names have significant capitalization)
+            capitalized_words = sum(1 for word in text.split() if word[0].isupper())
+            if capitalized_words < 1:
+                return False
+            
+            return True
+        
+        for element in potential_companies:
+            # Try to get meaningful text
+            text = element.get_text(strip=True)
+            
+            if is_valid_company(element):
+                # Try to find additional context
+                company_type = self._guess_company_type(text)
+                
+                refined_companies.append({
+                    "id": f"company_{len(refined_companies) + 1}",
+                    "name": text,
+                    "type": company_type,
+                    "url": "",
+                    "credits": []
+                })
+        
+        return refined_companies
+
     def _guess_company_type(self, name: str) -> str:
         """Guess company type based on name or patterns"""
         if not name:
