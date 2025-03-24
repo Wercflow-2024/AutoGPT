@@ -122,3 +122,11 @@ asyncio_mode = "auto"
 
 [tool.ruff]
 target-version = "py310"
+
+
+rich = "^13.7.0"
+jsonschema = "^4.22.0"  # You already have this
+pydantic = "^2.10.6"  # You already have this
+python-slugify = "^8.0.4"  # For creating safe filenames
+tqdm = "^4.66.2"  # For progress bars
+python-dotenv = "^1.0.1"

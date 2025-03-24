@@ -20,7 +20,8 @@ CONFIG = {
     # Directories
     "STRATEGIES_DIR": os.path.join(os.path.dirname(os.path.dirname(__file__)), "strategies"),
     "RESULTS_DIR": os.path.join(os.path.dirname(os.path.dirname(__file__)), "results"),
-    
+    "SNAPSHOT_DIR": os.path.join(os.path.dirname(os.path.dirname(__file__)), "snapshots"),
+
     # Scraping settings
     "REQUEST_TIMEOUT": 30,
     "RETRY_COUNT": 3,
@@ -29,15 +30,15 @@ CONFIG = {
     
     # AI settings
     "AI_ENABLED": True,
-    "AI_MODEL": os.getenv("AI_MODEL", "gpt-4o-mini"),  # Options: "gpt-4o", "gpt-4o-mini", "o1-mini", "o3-mini"
-    
-    # Azure OpenAI settings (loaded from environment variables)
+    "AI_MODEL": os.getenv("AI_MODEL", "gpt-4o-mini"),
+
+    # Azure OpenAI settings
     "AZURE_OPENAI_API_KEY": os.getenv("AZURE_OPENAI_API_KEY1", ""),
     "AZURE_OPENAI_ENDPOINT": os.getenv("AZURE_OPENAI_ENDPOINT", ""),
     "AZURE_OPENAI_4OM_ENDPOINT": os.getenv("AZURE_OPENAI_4OM_ENDPOINT", ""),
     "AZURE_OPENAI_O1_ENDPOINT": os.getenv("AZURE_OPENAI_O1_ENDPOINT", ""),
     "AZURE_OPENAI_O3_ENDPOINT": os.getenv("AZURE_OPENAI_O3_ENDPOINT", ""),
-    
+
     # HTTP headers
     "DEFAULT_HEADERS": {
         "User-Agent": (
@@ -52,6 +53,7 @@ CONFIG = {
         "Cache-Control": "max-age=0"
     }
 }
+
 
 # Create directories if they don't exist
 for directory in [CONFIG["SNAPSHOT_DIR"], CONFIG["RESULTS_DIR"], CONFIG["STRATEGIES_DIR"]]:

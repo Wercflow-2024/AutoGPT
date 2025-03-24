@@ -1,0 +1,28 @@
+{
+  "title": "",
+  "client": "",
+  "date": "",
+  "location": "",
+  "format": "",
+  "description": "",
+  "video_links": [],
+  "poster_image": "",
+  "companies": [],
+  "assets": {
+    "image_url": "https://dummy.com/fake-image.jpg"
+  },
+  "meta": {
+    "url": "https://lbbonline.com/work?edition=international/work/132211",
+    "scraped_at": "2025-03-24T09:15:39.919121",
+    "unknown_roles": [],
+    "strategy": "lbb_v1",
+    "missing_elements": [
+      "title",
+      "companies",
+      "media"
+    ],
+    "credits_enriched": false,
+    "strategy_used": "lbb_v1"
+  },
+  "company_details": []
+}

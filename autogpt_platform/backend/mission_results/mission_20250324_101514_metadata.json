@@ -1,0 +1,16 @@
+{
+  "mission_id": "mission_20250324_101514",
+  "url": "https://lbbonline.com/work?edition=international",
+  "strategy": "project_with_credits",
+  "agents": [
+    "validator",
+    "domain_scanner",
+    "entity_scraper",
+    "db_writer",
+    "project_scraper"
+  ],
+  "ai_enhanced": false,
+  "ai_model": null,
+  "started_at": "2025-03-24T10:15:24.112650",
+  "instructions": "default"
+}
