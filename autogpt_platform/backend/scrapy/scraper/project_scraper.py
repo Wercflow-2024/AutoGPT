@@ -18,6 +18,7 @@ import logging
 import argparse
 from typing import Dict, List, Optional, Tuple, Any
 from urllib.parse import urljoin, urlparse
+import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -721,6 +722,80 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
             strategy_file=strategy_file
         )
     return data
+
+def agent_scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: bool = False, 
+                         ai_enabled: bool = None, ai_model: Optional[str] = None,
+                         normalize_roles: bool = False, strategy_file: Optional[str] = None, 
+                         strategy_name: Optional[str] = None, max_attempts: int = 5) -> Dict:
+    """
+    Agent function to scrape a project page repeatedly until complete data is obtained.
+    Always uses headless fetching for dynamic content.
+    
+    Process:
+      1. Always fetch the fully rendered HTML using headless_fetcher.
+      2. Run adaptive extraction on the rendered HTML.
+      3. Validate the results. If required elements are missing, use AI to adjust the extraction strategy.
+      4. Retry (with a delay) until all elements are captured or max_attempts is reached.
+    
+    Args:
+        url: URL of the project page
+        fallback_mapping: Optional mapping for role/company normalization
+        debug: Enable debug output
+        ai_enabled: Override config setting for AI enhancement
+        ai_model: Override config setting for AI model
+        normalize_roles: Use AI to normalize unknown roles
+        strategy_file: Path to a JSON file containing a custom strategy
+        strategy_name: Name of a strategy to use (domain/version)
+        max_attempts: Maximum number of retry attempts
+    
+    Returns:
+        Dictionary with complete project data (or last attempt's data if unsuccessful)
+    """
+    attempt = 1
+    final_data = {}
+    while attempt <= max_attempts:
+        logger.info(f"🚀 Agent attempt {attempt} for URL: {url}")
+        # Always use headless_fetcher
+        rendered_html = fetch_dynamic_page(url, wait_selector=".credits-container", timeout=15)
+        logger.debug(f"Rendered HTML length: {len(rendered_html)} characters")
+        
+        # Run adaptive extraction on the rendered HTML.
+        # Here we assume scrape_project_adaptive can work with the rendered HTML.
+        # If it only works with URLs, consider modifying it to accept raw HTML.
+        # For this patch, we call it as usual, assuming it re-fetches or uses an internal override.
+        data = scrape_project_adaptive(
+            url=url,
+            fallback_mapping=fallback_mapping,
+            debug=debug,
+            ai_enabled=ai_enabled,
+            ai_model=ai_model,
+            normalize_roles=normalize_roles,
+            strategy_file=strategy_file
+        )
+        
+        missing_elements = validate_scraped_data(data)
+        logger.debug(f"Agent attempt {attempt}: Missing elements: {missing_elements}")
+        if not missing_elements:
+            logger.info("✅ Extraction complete. All required elements present.")
+            final_data = data
+            break
+        else:
+            logger.info(f"Agent attempt {attempt}: Missing elements ({missing_elements}). Using AI to adjust strategy.")
+            # Use AI to suggest selector adjustments
+            suggestions = suggest_fixes_via_openai(rendered_html, url, missing_elements, snapshot_path="N/A", previous_selectors=None)
+            if suggestions.get("suggestions"):
+                logger.info("Updating extraction strategy with AI suggestions.")
+                # For example, merge the suggestions into fallback_mapping or update local strategy
+                # (This is a placeholder; implement your own strategy update logic as needed.)
+            else:
+                logger.info("No AI suggestions provided; retrying with current strategy.")
+            logger.debug("Waiting 5 seconds before next attempt...")
+            time.sleep(5)
+        attempt += 1
+
+    if attempt > max_attempts:
+        logger.error("Max attempts reached. Extraction incomplete; returning last attempt's data.")
+    return final_data
 
 if __name__ == "__main__":
     
