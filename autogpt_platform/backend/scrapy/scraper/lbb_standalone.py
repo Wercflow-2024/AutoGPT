@@ -18,7 +18,7 @@ import argparse
 import requests
 import logging
 from typing import Dict, List, Optional, Any, Tuple
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 import time
 import random
 
