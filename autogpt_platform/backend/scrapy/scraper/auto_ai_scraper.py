@@ -1076,6 +1076,7 @@ class AutonomousScraper:
             
             # Try to find any hidden JSON in attributes
             data_attrs = soup.find_all(attrs=lambda x: x and hasattr(x, 'attrs') and any(a.startswith('data-') for a in x.attrs))
+
             
             for elem in data_attrs:
                 for attr, value in elem.attrs.items():
@@ -1268,7 +1269,7 @@ class AutonomousScraper:
             # Call OpenAI API
             if openai:
                 response = openai.ChatCompletion.create(
-                    model=self.model,
+                    deployment_id=self.model,  # Use deployment_id for Azure OpenAI
                     messages=[
                         {"role": "system", "content": "You are an expert web scraper assistant."},
                         {"role": "user", "content": prompt}
@@ -1276,6 +1277,7 @@ class AutonomousScraper:
                     max_tokens=4000,
                     temperature=0.2
                 )
+
                 ai_response = response.choices[0].message.content
             else:
                 # Direct API call
