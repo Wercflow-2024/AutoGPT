@@ -1,3 +1,5 @@
+# python -m backend.scrapy.scraper.auto_ai_scraper https://lbbonline.com/work/132273 --debug
+
 #!/usr/bin/env python3
 """
 Autonomous AI-Powered Scraper Agent
