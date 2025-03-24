@@ -1269,7 +1269,7 @@ class AutonomousScraper:
             # Call OpenAI API
             if openai:
                 response = openai.ChatCompletion.create(
-                    deployment_id=self.model,  # Use deployment_id for Azure OpenAI
+                    engine=self.model,  # Use engine parameter for Azure OpenAI
                     messages=[
                         {"role": "system", "content": "You are an expert web scraper assistant."},
                         {"role": "user", "content": prompt}
