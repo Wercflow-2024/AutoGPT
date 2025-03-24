@@ -31,13 +31,14 @@ try:
     from backend.scrapy.utils.config import CONFIG
     from backend.scrapy.utils.testing import save_html_snapshot, save_test_result
     from backend.scrapy.scraper.adaptive_extractor import extract_project_adaptive, scrape_project_adaptive
-
 except ImportError:
-    # For standalone testing
     import sys
     sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
     from scrapy.utils.config import CONFIG
     from scrapy.utils.testing import save_html_snapshot, save_test_result
+
+# NEW: Import headless_fetcher for dynamic content fetching
+from headless_fetcher import fetch_dynamic_page
 
 # Configure logging
 logging.basicConfig(
@@ -132,7 +133,7 @@ def fetch_html_and_snapshot(url: str, force_refresh: bool = False) -> Tuple[str,
     except Exception as e:
         logger.error(f"❌ Failed to fetch {url}: {e}")
         if os.path.exists(path):
-            logger.info(f"⚠️ Using existing snapshot despite error")
+            logger.info("⚠️ Using existing snapshot despite error")
             with open(path, "r", encoding="utf-8") as f:
                 return f.read(), True
         raise
@@ -300,7 +301,7 @@ def extract_lbbonline_2025(html: str, url: str, fallback_mapping: Dict) -> Dict:
                     "person": {
                         "id": person_id,
                         "name": person_name,
-                        "url": ""  # Usually not linked in the new design
+                        "url": ""
                     },
                     "role": role_name
                 })
@@ -427,14 +428,12 @@ def extract_project_data(html: str, strategy: Dict, url: str, fallback_mapping: 
             format_ = item.get_text(strip=True)
     
     # --- Media Assets ---
-    # Find video embeds
     video_links = []
     for iframe in soup.find_all("iframe"):
         src = iframe.get("src")
         if src and any(x in src for x in ["youtube", "vimeo", "lbbonline"]):
             video_links.append(src)
     
-    # Find poster image
     poster_image = ""
     og_image = soup.find("meta", property="og:image")
     if og_image:
@@ -685,13 +684,13 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
         ai_model: Override config setting for AI model
         normalize_roles: Use AI to normalize unknown roles
         strategy_file: Path to a JSON file containing a custom strategy
-        strategy_name: Name of a strategy (domain/version) to use
-        
+        strategy_name: Name of a strategy to use (domain/version)
+    
     Returns:
         Dictionary with project data
     """
-    # Use the adaptive extractor by default
-    return scrape_project_adaptive(
+    # First attempt using the adaptive extractor
+    data = scrape_project_adaptive(
         url=url,
         fallback_mapping=fallback_mapping,
         debug=debug,
@@ -700,6 +699,25 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
         normalize_roles=normalize_roles,
         strategy_file=strategy_file
     )
+    
+    # Validate scraped data; if dynamic elements are missing, use headless browser fallback
+    missing_elements = validate_scraped_data(data)
+    if missing_elements:
+        logger.info(f"Dynamic content missing ({missing_elements}). Retrying with headless browser...")
+        # Fetch fully rendered HTML using headless browser (waits for .credits-container to load)
+        rendered_html = fetch_dynamic_page(url, wait_selector=".credits-container", timeout=15)
+        # Optionally, save a new snapshot of the rendered HTML here if desired
+        # Re-run extraction using the fresh, rendered HTML by forcing a refresh in adaptive extractor if possible
+        data = scrape_project_adaptive(
+            url=url,
+            fallback_mapping=fallback_mapping,
+            debug=debug,
+            ai_enabled=ai_enabled,
+            ai_model=ai_model,
+            normalize_roles=normalize_roles,
+            strategy_file=strategy_file
+        )
+    return data
 
 if __name__ == "__main__":
     
