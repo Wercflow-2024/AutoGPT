@@ -199,6 +199,186 @@ def _generate_placeholder_suggestions(missing: List[str], snapshot_path: str) ->
         "snapshot_analyzed": snapshot_path
     }
 
+def extract_lbbonline_2025(html: str, url: str, fallback_mapping: Dict) -> Dict:
+    """
+    Custom extraction function for LBB Online 2025 design which has a non-standard credits structure.
+    
+    Args:
+        html: The HTML content
+        url: The URL being scraped
+        fallback_mapping: Mapping for role/company normalization
+        
+    Returns:
+        Dictionary with extracted project data
+    """
+    import re
+    from bs4 import BeautifulSoup
+    from urllib.parse import urljoin
+    
+    soup = BeautifulSoup(html, "html.parser")
+    
+    # Basic info extraction
+    title = soup.find("h1").get_text(strip=True) if soup.find("h1") else ""
+    
+    # Description - might be in rich text block
+    description = ""
+    desc_block = soup.select(".rich-text.space-y-5 p")
+    if desc_block:
+        description = " ".join(p.get_text(strip=True) for p in desc_block)
+    
+    # Project metadata
+    client = ""
+    date = ""
+    location = ""
+    format_ = ""
+    
+    meta_blocks = soup.select(".credit-meta div")
+    for block in meta_blocks:
+        text = block.get_text(" ", strip=True).lower()
+        if "client" in text or "brand" in text:
+            client = block.get_text(strip=True).replace("Client:", "").strip()
+        elif re.search(r"\b\d{4}\b", text):
+            date = text
+        elif "location" in text:
+            location = text
+        elif any(keyword in text for keyword in ["format", "type", "category"]):
+            format_ = text
+    
+    # Media extraction
+    video_links = []
+    for iframe in soup.find_all("iframe"):
+        src = iframe.get("src", "")
+        if src and any(x in src for x in ["youtube", "vimeo", "lbbonline"]):
+            video_links.append(src)
+    
+    # Poster image
+    poster_image = ""
+    og_image = soup.find("meta", property="og:image")
+    if og_image:
+        poster_image = og_image.get("content", "")
+    
+    # Credits extraction - this is the custom part
+    companies = []
+    unknown_roles = []
+    
+    # Find the credit blocks which now use a different structure
+    credit_blocks = soup.select("div.flex.space-y-4")
+    
+    for block in credit_blocks:
+        # Company name is in a span with these specific classes
+        company_name_el = block.select_one("span.font-barlow.font-bold.text-black")
+        if not company_name_el:
+            continue
+            
+        company_name = company_name_el.get_text(strip=True)
+        company_url = ""  # Not always present in the new design
+        company_id = company_name.lower().replace(" ", "_")
+        
+        # Company type might not be explicitly marked
+        company_type = ""
+        
+        # Look for roles which are in a different format
+        role_elements = block.select("div.team div")
+        
+        people = []
+        for role_el in role_elements:
+            role_text = role_el.get_text(strip=True)
+            
+            # Try to extract role and person from combined text (usually in format "Role: Person")
+            role_match = re.match(r"([^:]+):\s*(.*)", role_text)
+            
+            if role_match:
+                role_name = role_match.group(1).strip()
+                person_name = role_match.group(2).strip()
+                
+                # Create unique person ID
+                person_id = f"{company_id}_{person_name.lower().replace(' ', '_')}"
+                
+                people.append({
+                    "person": {
+                        "id": person_id,
+                        "name": person_name,
+                        "url": ""  # Usually not linked in the new design
+                    },
+                    "role": role_name
+                })
+            else:
+                # If no colon, assume it's just a role without a person
+                unknown_roles.append({"person_id": "unknown", "name": role_text})
+        
+        if company_name and (people or company_type):
+            companies.append({
+                "id": company_id,
+                "name": company_name,
+                "type": company_type,
+                "url": company_url,
+                "credits": people
+            })
+    
+    # Alternative approach - try to find companies in paragraphs if the above method failed
+    if not companies:
+        credit_section = soup.select(".credits-section, .project-credits, article section")
+        
+        for section in credit_section:
+            paragraphs = section.find_all("p")
+            
+            current_company = None
+            
+            for p in paragraphs:
+                text = p.get_text(strip=True)
+                
+                # Check if this is a company header
+                if p.find("strong") or p.find("b") or p.name == "h3" or p.name == "h4":
+                    # Start a new company
+                    current_company = {
+                        "id": text.lower().replace(" ", "_"),
+                        "name": text,
+                        "type": "",
+                        "url": "",
+                        "credits": []
+                    }
+                    companies.append(current_company)
+                elif current_company and ":" in text:
+                    # This might be a role: person combination
+                    role_parts = text.split(":", 1)
+                    role_name = role_parts[0].strip()
+                    person_names = role_parts[1].strip().split(",")
+                    
+                    for person_name in person_names:
+                        person_name = person_name.strip()
+                        if person_name:
+                            person_id = f"{current_company['id']}_{person_name.lower().replace(' ', '_')}"
+                            
+                            current_company["credits"].append({
+                                "person": {
+                                    "id": person_id,
+                                    "name": person_name,
+                                    "url": ""
+                                },
+                                "role": role_name
+                            })
+    
+    return {
+        "title": title,
+        "client": client,
+        "date": date,
+        "location": location,
+        "format": format_,
+        "description": description,
+        "video_links": video_links,
+        "poster_image": poster_image,
+        "companies": companies,
+        "assets": {
+            "image_url": poster_image
+        },
+        "meta": {
+            "url": url,
+            "unknown_roles": unknown_roles,
+            "strategy": "lbbonline_v2",
+            "custom_extractor": True
+        }
+    }
+
 def extract_project_data(html: str, strategy: Dict, url: str, fallback_mapping: Dict) -> Dict:
     """
     Extract project data using the selected strategy.
