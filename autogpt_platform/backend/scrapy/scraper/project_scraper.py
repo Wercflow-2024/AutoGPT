@@ -615,42 +615,43 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
     # Step 4: Validate extracted data
     missing_elements = validate_scraped_data(data)
     
-    # Step 5: If validation failed and AI is enabled, attempt AI-powered fix
+    # Step 5: If validation failed and AI is enabled, attempt AI-powered fix with retries
     if missing_elements and CONFIG["AI_ENABLED"]:
-        logger.warning(f"⚠️ Missing elements: {missing_elements}")
-        snapshot_path = os.path.join(SNAPSHOT_DIR, f"{urlparse(url).netloc.replace('www.', '')}_{hashlib.md5(url.encode()).hexdigest()[:10]}.html")
-        
-        # Call OpenAI for assistance
-        fix_suggestions = suggest_fixes_via_openai(html, url, missing_elements, snapshot_path)
-        
-        # Retry with AI-suggested selectors
-        if fix_suggestions.get("suggestions"):
+        retry_attempts = 0
+        max_retries = 10
+        all_suggestions = {}
+
+        while missing_elements and CONFIG["AI_ENABLED"] and retry_attempts < max_retries:
+            snapshot_path = os.path.join(SNAPSHOT_DIR, f"{urlparse(url).netloc.replace('www.', '')}_{hashlib.md5(url.encode()).hexdigest()[:10]}.html")
+            fix_suggestions = suggest_fixes_via_openai(html, url, missing_elements, snapshot_path, previous_selectors=all_suggestions)
+            new_selectors = fix_suggestions.get("suggestions", {})
+            if not new_selectors:
+                logger.warning("⚠️ No new selectors provided by AI. Breaking retry loop.")
+                break
+            all_suggestions.update(new_selectors)
+
             updated_strategy = {
                 "name": strategy.get("name", "ai_retry"),
-                "selectors": {**strategy.get("selectors", {}), **fix_suggestions["suggestions"]}
+                "selectors": {**strategy.get("selectors", {}), **all_suggestions}
             }
-            logger.info(f"🔁 Retrying scrape with AI-enhanced strategy: {updated_strategy['name']}")
-        
-            retry_data = extract_project_data(html, updated_strategy, url, fallback_mapping)
-            retry_missing = validate_scraped_data(retry_data)
-        
-            retry_data["meta"].update({
+
+            logger.info(f"🔁 Retry attempt {retry_attempts + 1} with AI-enhanced strategy: {updated_strategy['name']}")
+            data = extract_project_data(html, updated_strategy, url, fallback_mapping)
+            missing_elements = validate_scraped_data(data)
+
+            data["meta"].update({
                 "strategy_used": updated_strategy["name"],
                 "ai_retry": True,
-                "missing_elements_after_retry": retry_missing,
-                "ai_suggestions": fix_suggestions.get("suggestions", {}),
+                "retry_attempts": retry_attempts + 1,
+                "missing_elements_after_retry": missing_elements,
+                "ai_suggestions": all_suggestions,
                 "snapshot_analyzed": fix_suggestions.get("snapshot_analyzed"),
             })
-        
-            if debug:
-                logger.info(json.dumps(retry_data, indent=2))
-        
-            return retry_data
-        
-        # Add AI debug info to metadata
-        data["meta"]["missing_elements"] = missing_elements
-        data["meta"]["ai_suggestions"] = fix_suggestions.get("suggestions", {})
-        data["meta"]["credits_enriched"] = False
+
+            retry_attempts += 1
+
+            if not missing_elements:
+                break
     elif missing_elements:
         # AI is disabled but we still record missing elements
         data["meta"]["missing_elements"] = missing_elements
