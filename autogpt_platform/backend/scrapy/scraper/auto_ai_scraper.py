@@ -1228,44 +1228,51 @@ class AutonomousScraper:
         """Use AI to analyze the HTML and extract data"""
         logger.info("Attempting extraction with AI analysis")
         openai = None  # Ensure openai is defined
-        try:
-            import openai
-            openai.api_key = self.api_key
-            openai.api_base = os.environ.get("AZURE_OPENAI_ENDPOINT")
-            openai.api_type = "azure"
-            openai.api_version = "2024-08-01-preview"
-        except ImportError:
-            logger.warning("OpenAI package not found, cannot use AI analysis")
-            raise ValueError("No OpenAI API key provided")
-        
-        # Initialize result
-        result = {
-            "url": url,
-            "title": "",
-            "companies": [],
-            "meta": {
-                "extraction_method": "ai_analysis",
-                "scraped_at": datetime.now().isoformat()
-            }
-        }
-        
-        # Create truncated HTML for analysis
-        html_preview = html[:25000]  # Limit size for token reasons
+        # Create the prompt for AI analysis
         domain = self.extract_domain(url)
+        prompt = self._create_extraction_prompt(domain, html)
         
-        # Create prompt for OpenAI
-        prompt = self._create_extraction_prompt(domain, html_preview)
-        
+        # First try: use direct API call to Azure OpenAI via requests
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "api-key": self.api_key
+            }
+
+            payload = {
+                "messages": [
+                    {"role": "system", "content": "You are an expert web scraper assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                "max_tokens": 4000,
+                "temperature": 0.2
+            }
+
+            # Call the Azure OpenAI endpoint directly
+            response = requests.post(
+                self.endpoint,
+                headers=headers,
+                json=payload,
+                timeout=60
+            )
+            if response.status_code != 200:
+                raise ValueError(f"OpenAI API error: {response.status_code} - {response.text}")
+            response_data = response.json()
+            ai_response = response_data["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"Error in AI analysis: {e}")
+            raise ValueError(f"AI analysis failed: {e}")
+
+        # Second try: attempt using the openai package if available
         try:
             # Import OpenAI if needed
             try:
                 import openai
                 openai.api_key = self.api_key
             except ImportError:
-                # If openai package is not available, use requests directly
                 logger.warning("OpenAI package not found, using direct API call")
                 openai = None
-            
+
             # Call OpenAI API
             if openai:
                 response = openai.ChatCompletion.create(
@@ -1277,15 +1284,13 @@ class AutonomousScraper:
                     max_tokens=4000,
                     temperature=0.2
                 )
-
                 ai_response = response.choices[0].message.content
             else:
-                # Direct API call
+                # Direct API call using requests and a bearer token
                 headers = {
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {self.api_key}"
                 }
-                
                 payload = {
                     "model": self.model,
                     "messages": [
@@ -1295,41 +1300,42 @@ class AutonomousScraper:
                     "max_tokens": 4000,
                     "temperature": 0.2
                 }
-                
                 api_url = "https://api.openai.com/v1/chat/completions"
                 response = requests.post(api_url, headers=headers, json=payload, timeout=60)
                 response.raise_for_status()
-                
                 ai_response = response.json()["choices"][0]["message"]["content"]
-            
+
             # Save the raw AI response
             ai_response_path = os.path.join(self.session_dir, f"ai_response_{domain}.txt")
             with open(ai_response_path, "w", encoding="utf-8") as f:
                 f.write(ai_response)
             logger.debug(f"AI response saved to {ai_response_path}")
-            
+
             # Parse the AI response
             ai_data = self._parse_ai_response(ai_response)
-            
+
             # Update result with AI-extracted data
+            result = {}
             if 'data' in ai_data:
                 for key, value in ai_data['data'].items():
                     if key == 'companies' and isinstance(value, list):
                         result['companies'] = value
                     else:
                         result[key] = value
-            
+
             # Store patterns for learning
             if 'patterns' in ai_data:
+                if "meta" not in result:
+                    result["meta"] = {}
                 result['meta']['patterns'] = ai_data['patterns']
-            
+
             # If we didn't get companies, this method failed
             if not result.get('companies'):
                 raise ValueError("AI analysis did not yield company data")
-            
+
             logger.info(f"Successfully extracted data with AI: {len(result.get('companies', []))} companies")
             return result
-            
+
         except Exception as e:
             logger.error(f"Error in AI analysis: {e}")
             raise ValueError(f"AI analysis failed: {e}")
