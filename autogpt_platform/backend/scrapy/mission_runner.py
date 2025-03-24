@@ -187,6 +187,32 @@ def run_scrapy_mission(task: dict) -> dict:
         scraped += 1
         logger.info(f"✅ Project {scraped} processed: {raw_data.get('title', 'Unknown')}")
 
+        # Fallback logic for missing critical elements
+        if not raw_data.get("title") or not raw_data.get("companies") or not raw_data.get("media"):
+            logger.warning(f"⚠️ Missing critical elements in raw data for {link}. Attempting to generate new strategy...")
+            html_snapshot_file = os.path.join(results_dir, f"{mission_id}_{project_id}_snapshot.html")
+            with open(html_snapshot_file, "w", encoding="utf-8") as f:
+                f.write(f"<html><body><h1>Snapshot for {link}</h1></body></html>")  # Replace with actual HTML content
+
+            ai_strategy = ai_enhancer.analyze_html_structure(html_snapshot_file, link)
+            if ai_strategy and ai_strategy.get("strategy") != "unknown":
+                new_strategy = ai_strategy.get("strategy")
+                logger.info(f"✅ AI suggested new strategy: {new_strategy}")
+
+                # Save new strategy
+                new_strategy_file = os.path.join(results_dir, f"{mission_id}_{project_id}_strategy.json")
+                with open(new_strategy_file, "w", encoding="utf-8") as f:
+                    json.dump({"strategy": new_strategy}, f, indent=2)
+
+                # Retry scraping with the new strategy
+                logger.info(f"🔄 Retrying project scrape with new strategy for {link}...")
+                raw_data = run_project_scraper(link, url, agents, ai_enhanced, ai_model, normalize_roles)
+                if raw_data:
+                    logger.info(f"✅ Successfully scraped project with new strategy: {raw_data.get('title', 'Unknown')}")
+                else:
+                    logger.warning(f"⚠️ Failed to scrape project again: {link}")
+                    failed += 1
+
     # Complete mission metadata
     mission_metadata["completed_at"] = datetime.now().isoformat()
     mission_metadata["projects_scraped"] = scraped
@@ -315,4 +341,4 @@ if __name__ == "__main__":
     print(f"🚀 Starting mission for: {args.url}")
     result = run_scrapy_mission(task)
     print("\n✅ Result:")
-    pprint(result)  
+    pprint(result)

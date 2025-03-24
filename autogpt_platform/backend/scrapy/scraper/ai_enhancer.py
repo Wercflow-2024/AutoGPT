@@ -97,7 +97,7 @@ class AzureOpenAIEnhancer:
             self.enabled = True
             logger.info(f"✅ AI enhancer initialized with model: {model}")
     
-    def suggest_selectors(self, html_snippet: str, missing_elements: List[str], site_url: str) -> Dict[str, Any]:
+    def suggest_selectors(self, html_snippet: str, missing_elements: List[str], site_url: str, previous_selectors: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         """
         Analyze HTML and suggest CSS selectors for missing elements
         
@@ -117,7 +117,7 @@ class AzureOpenAIEnhancer:
         html_preview = html_snippet[:15000] + "..." if len(html_snippet) > 15000 else html_snippet
         
         # Create prompt for OpenAI
-        prompt = self._create_selector_prompt(html_preview, missing_elements, site_url)
+        prompt = self._create_selector_prompt(html_preview, missing_elements, site_url, previous_selectors)
         
         try:
             # Call Azure OpenAI API
@@ -239,42 +239,53 @@ class AzureOpenAIEnhancer:
         logger.debug(f"Raw AI response: {response_data['choices'][0]['message']['content']}")
         return response_data["choices"][0]["message"]["content"]
     
-    def _create_selector_prompt(self, html: str, missing_elements: List[str], site_url: str) -> List[Dict]:
+    def _create_selector_prompt(self, html: str, missing_elements: List[str], site_url: str, previous_selectors: Optional[Dict[str, str]] = None) -> List[Dict]:
         """Create prompt for selector suggestions"""
+        prior_context = ""
+        if previous_selectors:
+            formatted = json.dumps(previous_selectors, indent=2)
+            prior_context = f"\nPreviously attempted selectors:\n```json\n{formatted}\n```"
+
         return [
-            {"role": "system", "content": "You are an expert web scraper and HTML analyzer. Your job is to examine HTML snippets and suggest the most accurate CSS selectors for extracting specific elements. Your suggestions should be precise and robust."},
-            {"role": "user", "content": f"""
-I'm scraping data from: {site_url}
+            {
+                "role": "system",
+                "content": (
+                    "You are an expert web scraper and front-end engineer. "
+                    "Your job is to find the best CSS selectors to extract elements from a webpage based on its raw HTML. "
+                    "You are especially good at tracing elements based on visible text and structure."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"""
+I’m scraping this page: {site_url}
+I already have the HTML below. I'm trying to extract the following missing elements:
+- {', '.join(missing_elements)}
+{prior_context}
 
-I have the HTML below, but I'm missing the following elements in my extraction:
-{', '.join(missing_elements)}
+Please scan the HTML, and for each missing element:
+1. Suggest a **precise CSS selector** that targets that data
+2. Explain why that selector works
+3. List any obvious patterns or fallback selectors
 
-Please analyze the HTML and suggest CSS selectors for each missing element. For each suggestion:
-1. Provide the exact CSS selector
-2. Explain why you chose it
-3. If multiple selectors might work, provide alternatives
-
-Return your response as a JSON object with this structure:
+Only return a JSON object with this structure:
 {{
   "selectors": {{
-    "element_name": "selector",
-    ...
+    "element_name": "css selector"
   }},
   "explanations": {{
-    "element_name": "explanation",
-    ...
+    "element_name": "explanation"
   }},
   "alternatives": {{
-    "element_name": ["alt1", "alt2"],
-    ...
+    "element_name": ["alt1", "alt2"]
   }}
 }}
 
-Here's the HTML:
+Here’s the HTML:
 ```html
 {html}
-```
-"""}
+```"""
+            }
         ]
     
     def _create_role_prompt(self, unknown_roles: List[Dict], known_roles: Dict, html_snippet: str) -> List[Dict]:
