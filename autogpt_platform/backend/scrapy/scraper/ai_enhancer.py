@@ -27,6 +27,8 @@ def extract_json_from_response(text: str) -> dict:
     import re
 
     def clean_json_string(json_str):
+        # Remove inline JS-style comments
+        json_str = re.sub(r"//.*", "", json_str)
         # Replace single quotes with double quotes
         json_str = json_str.replace("'", '"')
         # Remove trailing commas
