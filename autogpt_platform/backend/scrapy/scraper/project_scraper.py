@@ -492,8 +492,8 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
                   normalize_roles: bool = False, strategy_file: Optional[str] = None,
                   strategy_name: Optional[str] = None) -> Dict:
     """
-    Main function to scrape a project page.
-    
+    Main function to scrape a project page with retries and AI-enhancement.
+
     Args:
         url: URL of the project page
         fallback_mapping: Optional mapping for role/company normalization
@@ -503,17 +503,17 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
         normalize_roles: Use AI to normalize unknown roles
         strategy_file: Path to a JSON file containing a custom strategy
         strategy_name: Name of a strategy (domain/version) to use
-        
+
     Returns:
         Dictionary with project data
     """
     # Override config settings if specified
     if ai_enabled is not None:
         CONFIG["AI_ENABLED"] = ai_enabled
-    
+
     if ai_model:
         CONFIG["AI_MODEL"] = ai_model
-    
+
     # Load fallback mapping if not provided
     if fallback_mapping is None:
         try:
@@ -523,42 +523,42 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
         except Exception as e:
             logger.warning(f"⚠️ Failed to load fallback mapping: {e}")
             fallback_mapping = {"company_types": {}, "role_mappings": {}}
-    
+
     # Step 1: Fetch HTML and save snapshot
     try:
         html, from_cache = fetch_html_and_snapshot(url, force_refresh=CONFIG["FORCE_REFRESH"])
     except Exception as e:
         logger.error(f"❌ Failed to fetch page: {e}")
         return {}
-    
+
     # Step 2: Load strategy or select automatically
     strategy = None
-    
+
     # First priority: Specific strategy file
     if strategy_file:
         try:
             logger.info(f"📊 Loading custom strategy from file: {strategy_file}")
             with open(strategy_file, "r", encoding="utf-8") as f:
                 strategy = json.load(f)
-            
+
             # Validate the strategy structure
             if not isinstance(strategy, dict):
                 raise ValueError("Strategy must be a dictionary")
-            
+
             if "selectors" not in strategy:
                 raise ValueError("Strategy must contain a 'selectors' key")
-                
+
             # Ensure all selector values are strings, not nested dictionaries
             for key, value in strategy.get("selectors", {}).items():
                 if not isinstance(value, str):
                     logger.warning(f"⚠️ Selector '{key}' is not a string, converting to string representation")
                     strategy["selectors"][key] = str(value)
-            
+
             logger.info(f"✅ Custom strategy loaded from file: {strategy.get('name', 'unknown')}")
         except Exception as e:
             logger.error(f"❌ Failed to load strategy file: {e}")
             strategy = None  # Will fall back to automatic selection
-    
+
     # Second priority: Named strategy from structured directory
     if not strategy and strategy_name:
         try:
@@ -569,12 +569,12 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
                 # If only domain provided, use the latest version
                 domain = strategy_name
                 version = None
-            
+
             # Find the strategy file
             strategy_dir = os.path.join(CONFIG["STRATEGIES_DIR"], domain)
             if not os.path.exists(strategy_dir):
                 raise FileNotFoundError(f"Strategy directory not found: {strategy_dir}")
-            
+
             if version:
                 # Look for specific version
                 strategy_files = [f for f in os.listdir(strategy_dir) if f.startswith(version)]
@@ -587,34 +587,33 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
                 if not strategy_files:
                     raise FileNotFoundError(f"No strategy files found in {domain}")
                 strategy_file = os.path.join(strategy_dir, strategy_files[-1])
-            
+
             logger.info(f"📊 Loading strategy from: {strategy_file}")
             with open(strategy_file, "r", encoding="utf-8") as f:
                 strategy = json.load(f)
-            
+
             # Validate and fix selectors
             if "selectors" in strategy:
                 for key, value in strategy.get("selectors", {}).items():
                     if not isinstance(value, str):
                         strategy["selectors"][key] = str(value)
-            
+
             logger.info(f"✅ Strategy loaded: {strategy.get('name', 'unknown')}")
         except Exception as e:
             logger.error(f"❌ Failed to load named strategy: {e}")
             strategy = None  # Will fall back to automatic selection
-    
+
     # Final fallback: Automatic strategy selection
     if not strategy:
         strategy = select_strategy(html, url)
         logger.info(f"📊 Using auto-selected strategy: {strategy.get('name', 'unknown')}")
-    
-    # Rest of the function remains the same as before
+
     # Step 3: Extract data using strategy
     data = extract_project_data(html, strategy, url, fallback_mapping)
-    
+
     # Step 4: Validate extracted data
     missing_elements = validate_scraped_data(data)
-    
+
     # Step 5: If validation failed and AI is enabled, attempt AI-powered fix with retries
     if missing_elements and CONFIG["AI_ENABLED"]:
         retry_attempts = 0
@@ -671,18 +670,18 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
                 logger.info(f"🧠 Saved new AI-enhanced strategy to: {strategy_path}")
         except Exception as e:
             logger.warning(f"⚠️ Failed to save AI strategy: {e}")
-    
+
     # Normalize roles with AI if requested
     if normalize_roles and CONFIG["AI_ENABLED"]:
         data = normalize_roles_with_ai(data, html)
-    
+
     # Record which strategy was used
     data["meta"]["strategy_used"] = strategy.get("name", "unknown")
-    
+
     # Step 6: Return the structured data
     if debug:
         logger.info(json.dumps(data, indent=2))
-    
+
     return data
 
 if __name__ == "__main__":
