@@ -6,6 +6,7 @@ Improves extraction quality by suggesting selectors and normalizing data.
 import os
 import json
 import logging
+import re
 from typing import Dict, List, Optional, Any
 import requests
 from dotenv import load_dotenv
@@ -20,6 +21,30 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S"
 )
 logger = logging.getLogger("ai_enhancer")
+
+def extract_json_from_response(text: str) -> dict:
+    """Extract valid JSON from an OpenAI response string"""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Extract from backtick-enclosed code block
+    match = re.search(r"```(?:json)?\s*({.*?})\s*```", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(1))
+        except json.JSONDecodeError:
+            pass
+
+    # Attempt to fix single quotes or trailing commas
+    try:
+        cleaned = text.replace("'", '"')
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    raise ValueError("❌ Could not parse AI response as valid JSON")
 
 class AzureOpenAIEnhancer:
     """
@@ -300,14 +325,7 @@ Here's the HTML:
         """Parse the response for selector suggestions"""
         try:
             # Extract JSON from response
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
-            
-            if json_start == -1 or json_end == -1:
-                raise ValueError("No JSON found in response")
-            
-            json_str = response[json_start:json_end]
-            suggestions = json.loads(json_str)
+            suggestions = extract_json_from_response(response)
             
             # Ensure we have the expected structure
             if "selectors" not in suggestions:
@@ -328,15 +346,7 @@ Here's the HTML:
         """Parse the response for role normalization"""
         try:
             # Extract JSON from response
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
-            
-            if json_start == -1 or json_end == -1:
-                raise ValueError("No JSON found in response")
-            
-            json_str = response[json_start:json_end]
-            normalized_roles = json.loads(json_str)
-            
+            normalized_roles = extract_json_from_response(response)
             return normalized_roles
             
         except Exception as e:
@@ -346,18 +356,7 @@ Here's the HTML:
     def _parse_structure_response(self, response: str) -> Dict:
         """Parse the response for HTML structure analysis"""
         try:
-            # Extract JSON from response
-            json_start = response.find('{')
-            json_end = response.rfind('}') + 1
-            
-            if json_start == -1 or json_end == -1:
-                raise ValueError("No JSON found in response")
-            
-            json_str = response[json_start:json_end]
-            strategy = json.loads(json_str)
-            
-            return strategy
-            
+            return extract_json_from_response(response)
         except Exception as e:
             logger.error(f"❌ Error parsing structure response: {str(e)}")
             return {"strategy": "unknown", "selectors": {}}
