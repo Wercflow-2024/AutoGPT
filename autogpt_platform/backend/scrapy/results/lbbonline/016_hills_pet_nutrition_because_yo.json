@@ -1,0 +1,64 @@
+{
+  "title": "Hill\u2019s Pet Nutrition - Because You\u2019re Only Human, There\u2019s Hill\u2019s",
+  "description": "",
+  "client": "",
+  "date": "",
+  "location": "",
+  "format": "",
+  "video_links": [
+    "https://notube.lbbonline.com/media/67dc3676d06bf5001a5a6c82"
+  ],
+  "poster_image": "https://d2clgeqocjw7k2.cloudfront.net/67dc3676d06bf5001a5a6c82/frame_0011.png",
+  "companies": [
+    {
+      "id": "ai_company_1",
+      "name": "EDITION",
+      "type": "",
+      "url": "",
+      "credits": []
+    },
+    {
+      "id": "ai_company_2",
+      "name": "\u2192",
+      "type": "",
+      "url": "",
+      "credits": []
+    },
+    {
+      "id": "ai_company_3",
+      "name": "Credits",
+      "type": "",
+      "url": "",
+      "credits": []
+    },
+    {
+      "id": "ai_company_4",
+      "name": "SUBSCRIBE TO LBB\u2019S newsletter",
+      "type": "",
+      "url": "",
+      "credits": []
+    },
+    {
+      "id": "ai_company_5",
+      "name": "FOLLOW US",
+      "type": "",
+      "url": "",
+      "credits": []
+    }
+  ],
+  "assets": {
+    "image_url": "https://d2clgeqocjw7k2.cloudfront.net/67dc3676d06bf5001a5a6c82/frame_0011.png"
+  },
+  "meta": {
+    "url": "https://lbbonline.com/work/132158",
+    "scraped_at": "2025-03-24T20:05:59.858265",
+    "unknown_roles": [],
+    "structure_type": "lbbonline_v2",
+    "extraction_method": "lbbonline_v2",
+    "credits_enriched": false,
+    "missing_elements": [],
+    "ai_suggestions": {
+      "companies": "div.flex > span.font-bold"
+    }
+  }
+}

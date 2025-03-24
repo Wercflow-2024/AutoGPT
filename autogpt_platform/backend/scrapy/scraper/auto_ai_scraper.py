@@ -36,7 +36,7 @@ import os
 
 load_dotenv()  # This loads variables from your .env file
 
-azure_key = os.getenv("AZURE_OPENAI_KEY1")
+azure_key = os.getenv("AZURE_OPENAI_API_KEY1")
 azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
 
 print("Azure OpenAI Key:", azure_key)
@@ -54,7 +54,8 @@ class AutonomousScraper:
             logger.setLevel(logging.DEBUG)
         
         # API configuration
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY") or os.environ.get("AZURE_OPENAI_API_KEY1")
+
         if not self.api_key:
             logger.warning("No OpenAI API key found. Set OPENAI_API_KEY environment variable.")
         
@@ -1225,6 +1226,10 @@ class AutonomousScraper:
     def extract_with_ai_analysis(self, html: str, url: str) -> Dict:
         """Use AI to analyze the HTML and extract data"""
         logger.info("Attempting extraction with AI analysis")
+        openai.api_key = self.api_key
+        openai.api_base = self.endpoint  # Use your Azure endpoint
+        openai.api_type = "azure"
+        openai.api_version = "2024-08-01-preview"
         
         if not self.api_key:
             logger.warning("No OpenAI API key, cannot use AI analysis")

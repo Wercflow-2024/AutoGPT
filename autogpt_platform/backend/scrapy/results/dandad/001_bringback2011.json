@@ -1,0 +1,31 @@
+{
+  "title": "#BringBack2011",
+  "description": "If you've been awarded Wood Pencil or above, drop us your details for further information about how you can order your D&AD Pencil. If you've previously won In Book or a Nomination and would like to celebrate your achievement with a Wood or Graphite Pencil, please let us know.",
+  "client": "",
+  "date": "",
+  "location": "",
+  "format": "",
+  "video_links": [
+    "https://dpk6zrxldcuco.cloudfront.net/2023/prof/fe/50/fe504823-0a84-4262-bd3a-fd644c151b62/out/hls.m3u8",
+    "https://www.youtube.com/user/dandad"
+  ],
+  "poster_image": "",
+  "companies": [],
+  "assets": {
+    "image_url": ""
+  },
+  "meta": {
+    "url": "https://www.dandad.org/awards/professional/2023/236565/bringback2011/",
+    "scraped_at": "2025-03-24T21:06:01.531666",
+    "unknown_roles": [],
+    "structure_type": "unknown",
+    "extraction_method": "unknown",
+    "credits_enriched": false,
+    "missing_elements": [
+      "companies"
+    ],
+    "ai_suggestions": {
+      "companies": ".entry_detail .companies-list .company-item"
+    }
+  }
+}
