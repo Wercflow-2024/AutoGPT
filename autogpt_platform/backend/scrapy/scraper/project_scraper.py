@@ -677,6 +677,9 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
     """
     Main function to scrape a project page.
     """
+    # Import here to avoid circular import
+    from backend.scrapy.scraper.headless_fetcher import fetch_dynamic_page
+    
     # First attempt using the adaptive extractor
     data = scrape_project_adaptive(
         url=url,
@@ -695,59 +698,51 @@ def scrape_project(url: str, fallback_mapping: Optional[Dict] = None, debug: boo
         logger.info(f"Dynamic content missing ({missing_elements}). Retrying with headless browser...")
         
         # Determine if this is an LBB page and set appropriate click selectors
-        click_selectors = None
+        click_selectors = []
+        wait_selector = None
+        
         if "lbbonline.com" in url:
             click_selectors = [
-                ".tab-selector", 
-                ".credits-tab",
-                "button:contains('Credits')",
-                "button:contains('View All')",
-                ".credits-selector"  # Add any other potential selectors
+                "a[data-tab='credits']",  # Direct tab selector
+                "a[href='#credits']",      # Href-based tab
+                "span:contains('Credits')",  # Text-based tab
+                "button:contains('Credits')",  # Button tab
+                ".tab-selector"  # Generic tab selector
             ]
             logger.info(f"Using LBB-specific click selectors: {click_selectors}")
+            wait_selector = ".credits-container, .credit-blocks, .tab-content"
         
         # Fetch fully rendered HTML using enhanced headless browser
         rendered_html = fetch_dynamic_page(
             url, 
-            wait_selector=".credits-container", 
+            wait_selector=wait_selector, 
             click_selectors=click_selectors,
             timeout=15,
             debug=debug
         )
         
         # Save a snapshot of the rendered HTML for debugging
-        if debug:
+        if rendered_html:
+            from urllib.parse import urlparse
+            import hashlib
             domain = urlparse(url).netloc.replace("www.", "")
             url_hash = hashlib.md5(url.encode()).hexdigest()[:10]
             rendered_path = os.path.join(SNAPSHOT_DIR, f"{domain}__rendered_{url_hash}.html")
             with open(rendered_path, "w", encoding="utf-8") as f:
                 f.write(rendered_html)
             logger.info(f"Saved rendered HTML snapshot to: {rendered_path}")
-        
-        # Create a fake context that uses the rendered HTML instead of re-fetching
-        class FakeContext:
-            def fetch_html_and_snapshot(self, url, force_refresh=False):
-                return rendered_html, False
-        
-        # Patch the fetch function temporarily
-        original_fetch = fetch_html_and_snapshot
-        fetch_html_and_snapshot = FakeContext().fetch_html_and_snapshot
-        
-        try:
-            # Re-run adaptive extraction with rendered HTML
-            logger.info("Re-running adaptive extraction with rendered HTML")
-            data = scrape_project_adaptive(
-                url=url,
-                fallback_mapping=fallback_mapping,
-                debug=debug,
-                ai_enabled=ai_enabled,
-                ai_model=ai_model,
-                normalize_roles=normalize_roles,
-                strategy_file=strategy_file
-            )
-        finally:
-            # Restore original fetch function
-            fetch_html_and_snapshot = original_fetch
+            
+            # Process the rendered HTML directly
+            adapted_data = extract_project_adaptive(url, rendered_html, fallback_mapping, debug)
+            
+            # If we got better data, use it
+            if adapted_data.get("companies") and len(adapted_data.get("companies", [])) > 0:
+                logger.info(f"Found {len(adapted_data['companies'])} companies in rendered HTML")
+                return adapted_data
+            else:
+                logger.warning("No companies found in rendered HTML, using original data")
+        else:
+            logger.warning("Failed to get rendered HTML, using original data")
     
     return data
 

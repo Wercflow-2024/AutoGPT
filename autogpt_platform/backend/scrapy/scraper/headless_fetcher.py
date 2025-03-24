@@ -6,8 +6,12 @@ import logging
 import re
 import json
 import time
+import os
 from typing import Optional, List, Dict, Tuple
-import demjson3  # For more forgiving JSON parsing
+try:
+    import demjson3  # For more forgiving JSON parsing
+except ImportError:
+    logging.warning("demjson3 not installed. Using fallback JSON parsing.")
 
 # Configure logging
 logging.basicConfig(
@@ -35,16 +39,6 @@ def fetch_dynamic_page(url: str, wait_selector: Optional[str] = None,
                       timeout: int = 30, debug: bool = False) -> str:
     """
     Fetch a page with enhanced JSON extraction, falling back to browser interaction
-    
-    Args:
-        url: URL to fetch
-        wait_selector: Optional CSS selector to wait for before considering page loaded
-        click_selectors: Optional list of CSS selectors to click after page load
-        timeout: Maximum seconds to wait for page load or selectors
-        debug: Whether to enable debug output and save screenshots
-        
-    Returns:
-        String containing the fully rendered HTML
     """
     if debug:
         logger.setLevel(logging.DEBUG)
@@ -192,12 +186,6 @@ def fetch_dynamic_page(url: str, wait_selector: Optional[str] = None,
 def extract_json_data(html: str) -> Dict:
     """
     Extract credits data from embedded JSON in the page HTML
-    
-    Args:
-        html: HTML content of the page
-        
-    Returns:
-        Dictionary with extracted credits data and flags
     """
     result = {
         'credits_found': False,
@@ -224,11 +212,12 @@ def extract_json_data(html: str) -> Dict:
                 logger.info("Successfully extracted lbb_credits JSON")
             except json.JSONDecodeError:
                 try:
-                    # Try with demjson for more forgiving parsing
-                    credits_data = demjson3.decode(credits_str)
-                    result['credits_data'] = credits_data
-                    result['credits_found'] = True
-                    logger.info("Successfully extracted lbb_credits JSON using demjson")
+                    # Try with demjson for more forgiving parsing if available
+                    if 'demjson3' in globals():
+                        credits_data = demjson3.decode(credits_str)
+                        result['credits_data'] = credits_data
+                        result['credits_found'] = True
+                        logger.info("Successfully extracted lbb_credits JSON using demjson")
                 except Exception as e:
                     logger.error(f"Failed to parse lbb_credits JSON: {e}")
     
@@ -260,13 +249,6 @@ def extract_json_data(html: str) -> Dict:
 def inject_extracted_credits(html: str, json_data: Dict) -> str:
     """
     Inject extracted credits data into the HTML to make it visible to the scraper
-    
-    Args:
-        html: Original HTML
-        json_data: Extracted credits data
-        
-    Returns:
-        Enhanced HTML with credits data
     """
     # Find where to inject our content (before closing body tag)
     if '</body>' not in html:
