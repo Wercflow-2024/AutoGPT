@@ -1226,14 +1226,13 @@ class AutonomousScraper:
         })
 
     def extract_with_ai_analysis(self, html: str, url: str) -> Dict:
-        """Use AI to analyze the HTML and extract data"""
+        """Use AI to analyze the HTML and extract data using the Azure OpenAI endpoint only"""
         logger.info("Attempting extraction with AI analysis")
-        openai = None  # Ensure openai is defined
         # Create the prompt for AI analysis
         domain = self.extract_domain(url)
         prompt = self._create_extraction_prompt(domain, html)
 
-        # First try: use direct API call to Azure OpenAI via requests
+        # Use direct API call to Azure OpenAI via requests
         try:
             headers = {
                 "Content-Type": "application/json",
@@ -1264,81 +1263,36 @@ class AutonomousScraper:
             logger.error(f"Error in AI analysis: {e}")
             raise ValueError(f"AI analysis failed: {e}")
 
-        # Second try: attempt using the openai package if available
-        try:
-            # Import OpenAI if needed
-            try:
-                from openai import OpenAI
-                
-                client = OpenAI(api_key=self.api_key)
-            except ImportError:
-                logger.warning("OpenAI package not found, using direct API call")
-                openai = None
+        # Save the raw AI response
+        ai_response_path = os.path.join(self.session_dir, f"ai_response_{domain}.txt")
+        with open(ai_response_path, "w", encoding="utf-8") as f:
+            f.write(ai_response)
+        logger.debug(f"AI response saved to {ai_response_path}")
 
-            # Call OpenAI API
-            if openai:
-                response = client.chat.completions.create(engine=self.model,  # Use engine parameter for Azure OpenAI
-                messages=[
-                    {"role": "system", "content": "You are an expert web scraper assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=4000,
-                temperature=0.2)
-                ai_response = response.choices[0].message.content
-            else:
-                # Direct API call using requests and a bearer token
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {self.api_key}"
-                }
-                payload = {
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": "You are an expert web scraper assistant."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "max_tokens": 4000,
-                    "temperature": 0.2
-                }
-                api_url = "https://api.openai.com/v1/chat/completions"
-                response = requests.post(api_url, headers=headers, json=payload, timeout=60)
-                response.raise_for_status()
-                ai_response = response.json().choices[0].message.content
+        # Parse the AI response
+        ai_data = self._parse_ai_response(ai_response)
 
-            # Save the raw AI response
-            ai_response_path = os.path.join(self.session_dir, f"ai_response_{domain}.txt")
-            with open(ai_response_path, "w", encoding="utf-8") as f:
-                f.write(ai_response)
-            logger.debug(f"AI response saved to {ai_response_path}")
+        # Update result with AI-extracted data
+        result = {}
+        if 'data' in ai_data:
+            for key, value in ai_data['data'].items():
+                if key == 'companies' and isinstance(value, list):
+                    result['companies'] = value
+                else:
+                    result[key] = value
 
-            # Parse the AI response
-            ai_data = self._parse_ai_response(ai_response)
+        # Store patterns for learning
+        if 'patterns' in ai_data:
+            if "meta" not in result:
+                result["meta"] = {}
+            result['meta']['patterns'] = ai_data['patterns']
 
-            # Update result with AI-extracted data
-            result = {}
-            if 'data' in ai_data:
-                for key, value in ai_data['data'].items():
-                    if key == 'companies' and isinstance(value, list):
-                        result['companies'] = value
-                    else:
-                        result[key] = value
+        # If we didn't get companies, this method failed
+        if not result.get('companies'):
+            raise ValueError("AI analysis did not yield company data")
 
-            # Store patterns for learning
-            if 'patterns' in ai_data:
-                if "meta" not in result:
-                    result["meta"] = {}
-                result['meta']['patterns'] = ai_data['patterns']
-
-            # If we didn't get companies, this method failed
-            if not result.get('companies'):
-                raise ValueError("AI analysis did not yield company data")
-
-            logger.info(f"Successfully extracted data with AI: {len(result.get('companies', []))} companies")
-            return result
-
-        except Exception as e:
-            logger.error(f"Error in AI analysis: {e}")
-            raise ValueError(f"AI analysis failed: {e}")
+        logger.info(f"Successfully extracted data with AI: {len(result.get('companies', []))} companies")
+        return result
 
     def _create_extraction_prompt(self, domain: str, html: str) -> str:
         """Create a prompt for the AI to extract data"""
