@@ -1,0 +1,14 @@
+{
+  "iteration": 11,
+  "timestamp": "2025-03-25T10:20:39.888334",
+  "methods_tried": [
+    "extract_from_lbb_credits_json",
+    "extract_from_old_credits",
+    "extract_from_dom",
+    "extract_generic",
+    "extract_with_ai_analysis"
+  ],
+  "success": false,
+  "extracted_companies": 1,
+  "extracted_credits": 0
+}

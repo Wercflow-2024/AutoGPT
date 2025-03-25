@@ -1,0 +1,291 @@
+{
+  "domains": {
+    "lbbonline.com": {
+      "patterns": {
+        "lbb_credits": {
+          "type": "regex",
+          "pattern": "\"lbb_credits\":\"((?:\\\\.|[^\"\\\\])*)\""
+        },
+        "title": {
+          "type": "regex",
+          "pattern": "\"brand_and_name\":\"([^\"]+)\""
+        },
+        "video_url": {
+          "type": "regex",
+          "pattern": "\"notube_id\":\"([^\"]+)\""
+        }
+      },
+      "extraction_methods": [
+        "extract_from_lbb_credits_json",
+        "extract_from_old_credits",
+        "extract_from_dom"
+      ]
+    }
+  },
+  "global_patterns": {
+    "title": [
+      {
+        "type": "meta",
+        "selector": "title"
+      },
+      {
+        "type": "regex",
+        "pattern": "<title>(.*?)</title>"
+      },
+      {
+        "type": "regex",
+        "pattern": "\"title\":\"([^\"]+)\""
+      }
+    ],
+    "description": [
+      {
+        "type": "meta",
+        "selector": "meta[name='description']",
+        "attribute": "content"
+      },
+      {
+        "type": "regex",
+        "pattern": "<meta\\s+name=\"description\"\\s+content=\"([^\"]+)\""
+      }
+    ],
+    "json_blocks": [
+      {
+        "type": "regex",
+        "pattern": "<script[^>]*type=\"application/json\"[^>]*>(.*?)</script>"
+      },
+      {
+        "type": "regex",
+        "pattern": "<script[^>]*id=\"__NEXT_DATA__\"[^>]*>(.*?)</script>"
+      },
+      {
+        "type": "regex",
+        "pattern": "\"lbb_credits\":\"((?:\\\\.|[^\"\\\\])*)\""
+      },
+      {
+        "type": "regex",
+        "pattern": "\"old_credits\":\"([^\"]*)\""
+      }
+    ]
+  },
+  "attempts": {
+    "20250325_101703": {
+      "url": "https://lbbonline.com/work/132273",
+      "domain": "lbbonline.com",
+      "started_at": "2025-03-25T10:17:03.637476",
+      "success": false,
+      "iterations": [
+        {
+          "iteration": 1,
+          "timestamp": "2025-03-25T10:17:03.637575",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_1.json"
+        },
+        {
+          "iteration": 2,
+          "timestamp": "2025-03-25T10:17:32.686331",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_2.json"
+        },
+        {
+          "iteration": 3,
+          "timestamp": "2025-03-25T10:18:01.402593",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_3.json"
+        },
+        {
+          "iteration": 4,
+          "timestamp": "2025-03-25T10:18:30.632942",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_4.json"
+        },
+        {
+          "iteration": 5,
+          "timestamp": "2025-03-25T10:18:47.678602",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_5.json"
+        },
+        {
+          "iteration": 6,
+          "timestamp": "2025-03-25T10:19:05.466389",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_6.json"
+        },
+        {
+          "iteration": 7,
+          "timestamp": "2025-03-25T10:19:26.435418",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_7.json"
+        },
+        {
+          "iteration": 8,
+          "timestamp": "2025-03-25T10:19:44.629807",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_8.json"
+        },
+        {
+          "iteration": 9,
+          "timestamp": "2025-03-25T10:20:02.208404",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_9.json"
+        },
+        {
+          "iteration": 10,
+          "timestamp": "2025-03-25T10:20:23.120786",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_10.json"
+        },
+        {
+          "iteration": 11,
+          "timestamp": "2025-03-25T10:20:39.888334",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_11.json"
+        },
+        {
+          "iteration": 12,
+          "timestamp": "2025-03-25T10:21:01.844592",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_12.json"
+        },
+        {
+          "iteration": 13,
+          "timestamp": "2025-03-25T10:21:18.629423",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_13.json"
+        },
+        {
+          "iteration": 14,
+          "timestamp": "2025-03-25T10:21:41.205580",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "extracted_companies": 1,
+          "extracted_credits": 0,
+          "artifact_path": "scraper_session_20250325_101701/attempt_20250325_101703_iter_14.json"
+        }
+      ]
+    }
+  },
+  "successes": {}
+}

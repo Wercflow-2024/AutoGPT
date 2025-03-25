@@ -1,0 +1,75 @@
+Based on the provided HTML content, I will extract the structured data for the creative project and provide the JSON format as requested. The HTML contains embedded JSON data (`__NEXT_DATA__`) that holds structured information about the project, including its title, companies involved, credits, and media links.
+
+Here is the extracted JSON:
+
+```json
+{
+  "data": {
+    "title": "Play by Play",
+    "description": null,
+    "companies": [
+      {
+        "name": "Cactus",
+        "type": null,
+        "credits": []
+      }
+    ],
+    "media": [
+      {
+        "type": "video",
+        "url": "https://notube.lbbonline.com/media/67e196b6956c28001a81fbc0"
+      },
+      {
+        "type": "image",
+        "url": "https://d2clgeqocjw7k2.cloudfront.net/67e196b6956c28001a81fbc0/frame_0000.png"
+      }
+    ]
+  },
+  "patterns": {
+    "title": {
+      "type": "json_path",
+      "pattern": "$.props.pageProps.apolloState.ROOT_QUERY.works[0].name"
+    },
+    "description": {
+      "type": "json_path",
+      "pattern": "$.props.pageProps.apolloState.ROOT_QUERY.works[0].description"
+    },
+    "companies": {
+      "type": "json_path",
+      "pattern": "$.props.pageProps.apolloState.ROOT_QUERY.works[0].company_office_works[0].company_office.name"
+    },
+    "media": {
+      "type": "json_path",
+      "pattern": [
+        "$.props.pageProps.apolloState.ROOT_QUERY.works[0].encoding_ticket.notube_id",
+        "$.props.pageProps.apolloState.ROOT_QUERY.works[0].thumbnail_url"
+      ]
+    }
+  }
+}
+```
+
+### Explanation of Extraction:
+
+1. **Title**:
+   - Extracted from the embedded JSON (`__NEXT_DATA__`) using the key `works[0].name`.
+
+2. **Description**:
+   - Extracted from the embedded JSON using the key `works[0].description`. It is `null` in this case.
+
+3. **Companies**:
+   - The company name "Cactus" is extracted from `works[0].company_office_works[0].company_office.name`.
+   - No specific type or credits are available for the company in the provided data.
+
+4. **Media**:
+   - The video URL is constructed using the `notube_id` from `works[0].encoding_ticket.notube_id`.
+   - The image URL is extracted from `works[0].thumbnail_url`.
+
+### Patterns:
+The `patterns` section provides the JSON paths used to extract the data from the embedded JSON. These paths can be used programmatically to extract similar data from other pages with the same structure.
+
+### Notes:
+- If additional credits for individuals are available in the JSON or elsewhere in the HTML, they can be added to the `credits` array under the `companies` section.
+- The media URLs are extracted directly from the JSON data and are assumed to be valid.
+
+Let me know if you need further assistance or additional refinements!
