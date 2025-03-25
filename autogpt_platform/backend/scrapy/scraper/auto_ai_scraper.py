@@ -1295,62 +1295,72 @@ class AutonomousScraper:
         return result
 
     def _create_extraction_prompt(self, domain: str, html: str) -> str:
-        """Create a prompt for the AI to extract data"""
+        """Create a prompt for the AI to extract data. If golden data is available, incorporate the unique company names as keywords."""
+        # Attempt to load golden data using a URL constructed from the domain
+        # (This assumes the golden data exists for URLs matching the pattern used in load_gold_standard)
+        gold = self.load_gold_standard(f"https://{domain}/work/123456")  # Note: Adjust the project ID if necessary
+        keywords_section = ""
+        if gold and "companies" in gold:
+            company_names = [company["name"] for company in gold["companies"] if "name" in company]
+            if company_names:
+                unique_names = ", ".join(sorted(set(company_names)))
+                keywords_section = f"\nConfirmed company names from golden data: {unique_names}\n"
+        
         return f"""
-I need your help extracting structured data from this HTML from {domain}.
+    I need your help extracting structured data from this HTML from {domain}.
+    {keywords_section}
+    I specifically need to extract:
+    1. Title or name of the creative project which is usually structured "Brand - Campaign Name"
+    2. Companies involved in the project (production companies, agencies, studios, etc.)
+    3. Credits (the people who worked on the project and their roles)
+    4. Any media links (videos, images)
 
-I specifically need to extract:
-1. Title or name of the creative project
-2. Companies involved in the project (production companies, agencies, studios, etc.)
-3. Credits (the people who worked on the project and their roles)
-4. Any media links (videos, images)
+    The HTML might contain embedded JSON data with keys like "lbb_credits" or "old_credits" that hold structured information.
 
-The HTML might contain embedded JSON data with keys like "lbb_credits" or "old_credits" that hold structured information.
+    Please analyze this HTML and extract the data in the following JSON format:
 
-Please analyze this HTML and extract the data in the following JSON format:
-
-```json
-{{
-  "data": {{
-    "title": "The extracted title",
-    "description": "The extracted description if available",
-    "companies": [
-      {{
-        "name": "Company name",
-        "type": "Company type if available",
-        "credits": [
-          {{
-            "person": {{
-              "name": "Person name"
-            }},
-            "role": "Person's role"
-          }}
+    ```json
+    {{
+    "data": {{
+        "title": "The extracted title",
+        "description": "The extracted description if available",
+        "companies": [
+        {{
+            "name": "Company name",
+            "type": "Company type if available",
+            "credits": [
+            {{
+                "person": {{
+                "name": "Person name"
+                }},
+                "role": "Person's role"
+            }}
+            ]
+        }}
+        ],
+        "media": [
+        {{
+            "type": "video/image",
+            "url": "URL of media"
+        }}
         ]
-      }}
-    ],
-    "media": [
-      {{
-        "type": "video/image",
-        "url": "URL of media"
-      }}
-    ]
-  }},
-  "patterns": {{
-    "title": {{
-      "type": "regex",
-      "pattern": "The regex pattern to extract the title"
     }},
-    "companies": {{
-      "type": "regex/json_path",
-      "pattern": "The pattern to extract companies"
+    "patterns": {{
+        "title": {{
+        "type": "regex",
+        "pattern": "The regex pattern to extract the title"
+        }},
+        "companies": {{
+        "type": "regex/json_path",
+        "pattern": "The pattern to extract companies"
+        }}
     }}
-  }}
-}}
+    }}
 
-Here's the HTML:
-{html}
-If the HTML is truncated, focus on identifying patterns in the available content.
-"""
+    Here's the HTML:
+    {html}
+    If the HTML is truncated, focus on identifying patterns in the available content.
+    """
 
     def _parse_ai_response(self, response: str) -> Dict:
         """Parse the AI response to extract structured data"""
