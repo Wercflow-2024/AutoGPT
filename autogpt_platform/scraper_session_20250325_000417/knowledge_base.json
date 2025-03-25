@@ -1,0 +1,341 @@
+{
+  "domains": {
+    "lbbonline.com": {
+      "patterns": {
+        "lbb_credits": {
+          "type": "regex",
+          "pattern": "\"lbb_credits\":\"((?:\\\\.|[^\"\\\\])*)\""
+        },
+        "title": {
+          "type": "regex",
+          "pattern": "\"brand_and_name\":\"([^\"]+)\""
+        },
+        "video_url": {
+          "type": "regex",
+          "pattern": "\"notube_id\":\"([^\"]+)\""
+        }
+      },
+      "extraction_methods": [
+        "extract_from_lbb_credits_json",
+        "extract_from_old_credits",
+        "extract_from_dom"
+      ]
+    }
+  },
+  "global_patterns": {
+    "title": [
+      {
+        "type": "meta",
+        "selector": "title"
+      },
+      {
+        "type": "regex",
+        "pattern": "<title>(.*?)</title>"
+      },
+      {
+        "type": "regex",
+        "pattern": "\"title\":\"([^\"]+)\""
+      }
+    ],
+    "description": [
+      {
+        "type": "meta",
+        "selector": "meta[name='description']",
+        "attribute": "content"
+      },
+      {
+        "type": "regex",
+        "pattern": "<meta\\s+name=\"description\"\\s+content=\"([^\"]+)\""
+      }
+    ],
+    "json_blocks": [
+      {
+        "type": "regex",
+        "pattern": "<script[^>]*type=\"application/json\"[^>]*>(.*?)</script>"
+      },
+      {
+        "type": "regex",
+        "pattern": "<script[^>]*id=\"__NEXT_DATA__\"[^>]*>(.*?)</script>"
+      },
+      {
+        "type": "regex",
+        "pattern": "\"lbb_credits\":\"((?:\\\\.|[^\"\\\\])*)\""
+      },
+      {
+        "type": "regex",
+        "pattern": "\"old_credits\":\"([^\"]*)\""
+      }
+    ]
+  },
+  "attempts": {
+    "20250325_000419": {
+      "url": "https://lbbonline.com/work/132273",
+      "domain": "lbbonline.com",
+      "started_at": "2025-03-25T00:04:19.152116",
+      "success": false,
+      "iterations": [
+        {
+          "iteration": 1,
+          "timestamp": "2025-03-25T00:04:19.152207",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 2,
+          "timestamp": "2025-03-25T00:04:33.974983",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 3,
+          "timestamp": "2025-03-25T00:04:50.089899",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 4,
+          "timestamp": "2025-03-25T00:05:04.174377",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 5,
+          "timestamp": "2025-03-25T00:05:21.688384",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 6,
+          "timestamp": "2025-03-25T00:05:35.434328",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 7,
+          "timestamp": "2025-03-25T00:05:52.457954",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 8,
+          "timestamp": "2025-03-25T00:06:07.445091",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 9,
+          "timestamp": "2025-03-25T00:06:28.685814",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 10,
+          "timestamp": "2025-03-25T00:06:43.852821",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 11,
+          "timestamp": "2025-03-25T00:07:03.296818",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 12,
+          "timestamp": "2025-03-25T00:07:18.669499",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 13,
+          "timestamp": "2025-03-25T00:07:35.541848",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 14,
+          "timestamp": "2025-03-25T00:08:00.074202",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 15,
+          "timestamp": "2025-03-25T00:08:17.659655",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 16,
+          "timestamp": "2025-03-25T00:08:37.877069",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 17,
+          "timestamp": "2025-03-25T00:08:54.943910",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 18,
+          "timestamp": "2025-03-25T00:09:14.646552",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 19,
+          "timestamp": "2025-03-25T00:09:38.527128",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        },
+        {
+          "iteration": 20,
+          "timestamp": "2025-03-25T00:09:59.066858",
+          "methods_tried": [
+            "extract_from_lbb_credits_json",
+            "extract_from_old_credits",
+            "extract_from_dom",
+            "extract_generic",
+            "extract_with_ai_analysis"
+          ],
+          "success": false,
+          "error": "'NoneType' object has no attribute 'get'"
+        }
+      ]
+    }
+  },
+  "successes": {}
+}

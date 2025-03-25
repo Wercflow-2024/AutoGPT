@@ -55,6 +55,7 @@ class AutonomousScraper:
         
         # API configuration
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY") or os.environ.get("AZURE_OPENAI_API_KEY1")
+        self.endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
 
         if not self.api_key:
             logger.warning("No OpenAI API key found. Set OPENAI_API_KEY environment variable.")
